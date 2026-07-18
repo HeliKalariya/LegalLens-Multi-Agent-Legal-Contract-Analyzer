@@ -1,74 +1,65 @@
-"""
-upload_service.py
-
-Business logic for document uploads.
-
-Responsibilities
-----------------
-1. Generate a unique filename.
-2. Create upload folders if needed.
-3. Save uploaded files.
-4. Return metadata.
-"""
+"""Local file storage used by the development upload API."""
 
 from __future__ import annotations
 
+import json
 import uuid
+from datetime import datetime, timezone
 from pathlib import Path
-from datetime import datetime
+
+from app.config import settings
 
 
 class UploadService:
-    """
-    Handles document upload operations.
-    """
+    """Saves PDFs locally and keeps a small JSON index for the frontend."""
 
     def __init__(self) -> None:
-        # backend/uploads/
-        self.upload_root = Path("uploads")
+        self.pdf_directory = settings.PDF_UPLOAD_DIR
+        self.index_path = settings.UPLOAD_DIR / "documents.json"
 
-        # backend/uploads/pdfs/
-        self.pdf_directory = self.upload_root / "pdfs"
-
-        # backend/uploads/docx/
-        self.docx_directory = self.upload_root / "docx"
-
-        # Create folders automatically
-        self.pdf_directory.mkdir(parents=True, exist_ok=True)
-        self.docx_directory.mkdir(parents=True, exist_ok=True)
-
-    async def upload_document(
-        self,
-        filename: str,
-        content_type: str,
-        file_bytes: bytes,
-    ) -> dict:
-        """
-        Save uploaded document and return metadata.
-        """
-
+    def save_pdf(self, filename: str, file_bytes: bytes) -> dict:
+        """Save one PDF under a generated name and return public metadata."""
         document_id = str(uuid.uuid4())
-
-        extension = Path(filename).suffix.lower()
-
-        stored_filename = f"{document_id}{extension}"
-
-        if extension == ".pdf":
-            save_directory = self.pdf_directory
-        else:
-            save_directory = self.docx_directory
-
-        file_path = save_directory / stored_filename
-
+        stored_filename = f"{document_id}.pdf"
+        file_path = self.pdf_directory / stored_filename
         file_path.write_bytes(file_bytes)
 
-        return {
+        document = {
             "document_id": document_id,
             "original_filename": filename,
             "stored_filename": stored_filename,
-            "content_type": content_type,
             "size": len(file_bytes),
-            "path": str(file_path),
-            "status": "uploaded",
-            "uploaded_at": datetime.utcnow().isoformat() + "Z",
+            "uploaded_at": datetime.now(timezone.utc).isoformat(),
         }
+        documents = self.list_documents()
+        documents.insert(0, document)
+        self._write_index(documents)
+        return document
+
+    def list_documents(self) -> list[dict]:
+        """Return saved PDF metadata, newest first."""
+        if not self.index_path.exists():
+            return []
+
+        try:
+            return json.loads(self.index_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            return []
+
+    def get_pdf_path(self, document_id: str) -> Path | None:
+        """Find a saved PDF only when its ID exists in the local index."""
+        document = next(
+            (item for item in self.list_documents() if item["document_id"] == document_id),
+            None,
+        )
+        if not document:
+            return None
+
+        file_path = self.pdf_directory / document["stored_filename"]
+        return file_path if file_path.is_file() else None
+
+    def _write_index(self, documents: list[dict]) -> None:
+        """Write metadata atomically so the list stays valid after an interruption."""
+        temporary_path = self.index_path.with_suffix(".tmp")
+        temporary_path.write_text(json.dumps(documents, indent=2), encoding="utf-8")
+        temporary_path.replace(self.index_path)
