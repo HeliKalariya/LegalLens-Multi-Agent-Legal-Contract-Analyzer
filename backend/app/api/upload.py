@@ -4,11 +4,21 @@ from pathlib import Path
 
 from fastapi import APIRouter, File, HTTPException, UploadFile, status
 from fastapi.responses import FileResponse
+from pydantic import BaseModel
 
 from app.services.upload_service import UploadService
 
 router = APIRouter(prefix="/api/upload", tags=["Upload"])
 MAX_FILE_SIZE = 20 * 1024 * 1024
+
+
+class AnalysisResponse(BaseModel):
+    """Small result returned after the local legal-document check."""
+
+    document_type: str
+    legal_signals: list[str]
+    risk_topics: list[str]
+    message: str
 
 
 @router.post("/", status_code=status.HTTP_201_CREATED)
@@ -33,10 +43,26 @@ def list_pdfs():
     return {"data": UploadService().list_documents()}
 
 
+@router.post("/{document_id}/analyze", response_model=AnalysisResponse)
+def analyze_pdf(document_id: str):
+    """Analyze a readable PDF only when it contains legal-document language."""
+    try:
+        return UploadService().analyze_pdf(document_id)
+    except FileNotFoundError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+
+
 @router.get("/{document_id}/download")
-def download_pdf(document_id: str):
-    """Stream a saved PDF to the browser instead of exposing file paths."""
+def preview_pdf(document_id: str):
+    """Stream a saved PDF inline so it stays visible inside the app preview."""
     file_path = UploadService().get_pdf_path(document_id)
     if not file_path:
         raise HTTPException(status_code=404, detail="PDF not found.")
-    return FileResponse(file_path, media_type="application/pdf", filename=file_path.name)
+    return FileResponse(
+        file_path,
+        media_type="application/pdf",
+        filename=file_path.name,
+        content_disposition_type="inline",
+    )

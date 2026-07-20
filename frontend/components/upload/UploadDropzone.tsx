@@ -6,7 +6,7 @@ import { UploadCloud } from "lucide-react";
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
 
 type UploadDropzoneProps = {
-  onUploaded: () => void;
+  onUploaded: (documentId: string) => void;
 };
 
 export default function UploadDropzone({ onUploaded }: UploadDropzoneProps) {
@@ -38,7 +38,7 @@ export default function UploadDropzone({ onUploaded }: UploadDropzoneProps) {
       if (!response.ok) throw new Error(result.detail ?? "Upload failed.");
 
       setMessage(`${result.data.original_filename} saved successfully.`);
-      onUploaded();
+      onUploaded(result.data.document_id);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Upload failed.");
     } finally {

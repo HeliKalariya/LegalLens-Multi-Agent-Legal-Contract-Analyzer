@@ -7,6 +7,8 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
+from pypdf import PdfReader
+
 from app.config import settings
 
 
@@ -57,6 +59,36 @@ class UploadService:
 
         file_path = self.pdf_directory / document["stored_filename"]
         return file_path if file_path.is_file() else None
+
+    def analyze_pdf(self, document_id: str) -> dict:
+        """Extract PDF text and allow analysis only for legal-contract content."""
+        file_path = self.get_pdf_path(document_id)
+        if not file_path:
+            raise FileNotFoundError("PDF not found.")
+
+        try:
+            text = "\n".join(page.extract_text() or "" for page in PdfReader(file_path).pages)
+        except Exception as error:
+            raise ValueError("This PDF cannot be read for analysis.") from error
+
+        normalized_text = text.lower()
+        legal_terms = (
+            "agreement", "party", "parties", "contract", "clause", "terms",
+            "confidential", "liability", "governing law", "termination",
+        )
+        matched_terms = [term for term in legal_terms if term in normalized_text]
+        if len(matched_terms) < 3:
+            raise ValueError("This does not appear to be a legal document and cannot be analyzed here.")
+
+        risk_terms = ("indemnity", "liability", "penalty", "termination", "arbitration")
+        matched_risks = [term for term in risk_terms if term in normalized_text]
+        document_type = "Non-disclosure agreement" if "non-disclosure" in normalized_text or "nda" in normalized_text else "Legal contract"
+        return {
+            "document_type": document_type,
+            "legal_signals": matched_terms,
+            "risk_topics": matched_risks,
+            "message": "Legal document analysis completed successfully.",
+        }
 
     def _write_index(self, documents: list[dict]) -> None:
         """Write metadata atomically so the list stays valid after an interruption."""
