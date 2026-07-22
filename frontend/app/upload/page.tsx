@@ -5,14 +5,12 @@ import DashboardLayout from "@/components/layout/DashboardLayout";
 import PdfViewer from "@/components/upload/PdfViewer";
 import UploadDropzone from "@/components/upload/UploadDropzone";
 import RecentUploads from "@/components/upload/RecentUploads";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
+import { API_URL, authHeaders } from "@/lib/api";
 
 type Analysis = {
-  document_type: string;
   legal_signals: string[];
   risk_topics: string[];
-  message: string;
+  analysis_status: string;
 };
 
 export default function UploadPage() {
@@ -29,7 +27,10 @@ export default function UploadPage() {
     setAnalysis(null);
     setAnalysisError("");
     try {
-      const response = await fetch(`${API_URL}/api/upload/${uploadedDocumentId}/analyze`, { method: "POST" });
+      const response = await fetch(`${API_URL}/api/upload/${uploadedDocumentId}/analyze`, {
+        method: "POST",
+        headers: authHeaders(),
+      });
       const result = await response.json();
       if (!response.ok) throw new Error(result.detail ?? "Analysis failed.");
       setAnalysis(result);
@@ -69,8 +70,8 @@ export default function UploadPage() {
             {analysisError && <p className="mt-4 text-sm text-red-600">{analysisError}</p>}
             {analysis && (
               <div className="mt-4 text-sm text-gray-700">
-                <p className="font-semibold">{analysis.message}</p>
-                <p className="mt-1">Type: {analysis.document_type}</p>
+                <p className="font-semibold">Legal document analysis completed successfully.</p>
+                <p className="mt-1">Status: {analysis.analysis_status}</p>
                 <p className="mt-1">Legal signals: {analysis.legal_signals.join(", ")}</p>
                 <p className="mt-1">Risk topics: {analysis.risk_topics.length ? analysis.risk_topics.join(", ") : "None found"}</p>
               </div>

@@ -15,6 +15,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 # Import API routers
 from app.api.upload import router as upload_router
+from app.api.auth import router as auth_router
+from app.database.init_db import init_db
 
 # ----------------------------------------------------
 # Create FastAPI application
@@ -59,6 +61,13 @@ app.add_middleware(
 # POST /api/upload
 # ----------------------------------------------------
 app.include_router(upload_router)
+app.include_router(auth_router)
+
+
+@app.on_event("startup")
+def create_database_tables():
+    """Create the local database tables needed for user document history."""
+    init_db()
 
 
 # ----------------------------------------------------

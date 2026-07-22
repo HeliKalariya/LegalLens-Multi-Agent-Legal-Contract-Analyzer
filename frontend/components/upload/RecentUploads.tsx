@@ -2,8 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { FileText } from "lucide-react";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
+import { API_URL, authHeaders } from "@/lib/api";
 
 type Document = {
   document_id: string;
@@ -28,9 +27,9 @@ export default function RecentUploads({ refreshKey = 0, onOpenPdf }: RecentUploa
   useEffect(() => {
     async function loadDocuments() {
       try {
-        const response = await fetch(`${API_URL}/api/upload/`);
+        const response = await fetch(`${API_URL}/api/upload/`, { headers: authHeaders() });
         const result = await response.json();
-        if (!response.ok) throw new Error("Could not load PDFs.");
+        if (!response.ok) throw new Error(result.detail ?? "Please sign in to view your PDFs.");
         setDocuments(result.data);
       } catch (loadError) {
         setError(loadError instanceof Error ? loadError.message : "Could not load PDFs.");
