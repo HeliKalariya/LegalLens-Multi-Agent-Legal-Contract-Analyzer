@@ -10,7 +10,6 @@ import {
   Bot,
   Shield,
   Settings,
-  LogIn,
 } from "lucide-react";
 
 const menuItems = [
@@ -104,13 +103,6 @@ export default function Sidebar() {
           })}
         </ul>
       </nav>
-
-      <div className="border-t border-gray-200 p-4">
-        <Link href="/login" className="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium text-gray-600 hover:bg-[#F5F1E9] hover:text-black">
-          <LogIn size={20} />
-          <span>Sign in</span>
-        </Link>
-      </div>
 
     </aside>
   );

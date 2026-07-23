@@ -2,14 +2,14 @@
 
 import { useEffect, useState } from "react";
 import { X } from "lucide-react";
-import { API_URL, authHeaders } from "@/lib/api";
+import { API_URL } from "@/lib/api";
 
 type PdfViewerProps = {
   documentId: string | null;
   onClose: () => void;
 };
 
-/** Loads an authenticated PDF as a browser blob so it can be viewed in-app. */
+/** Loads a locally stored PDF into the in-app preview. */
 export default function PdfViewer({ documentId, onClose }: PdfViewerProps) {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [error, setError] = useState("");
@@ -22,7 +22,7 @@ export default function PdfViewer({ documentId, onClose }: PdfViewerProps) {
       setPreviewUrl(null);
       setError("");
       try {
-        const response = await fetch(`${API_URL}/api/upload/${documentId}/preview`, { headers: authHeaders() });
+        const response = await fetch(`${API_URL}/api/upload/${documentId}/download`);
         if (!response.ok) {
           const result = await response.json();
           throw new Error(result.detail ?? "Could not open PDF.");

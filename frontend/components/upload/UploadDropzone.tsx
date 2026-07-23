@@ -2,7 +2,7 @@
 
 import { ChangeEvent, DragEvent, useRef, useState } from "react";
 import { UploadCloud } from "lucide-react";
-import { API_URL, authHeaders } from "@/lib/api";
+import { API_URL } from "@/lib/api";
 
 type UploadDropzoneProps = {
   onUploaded: (documentId: string) => void;
@@ -31,11 +31,10 @@ export default function UploadDropzone({ onUploaded }: UploadDropzoneProps) {
     try {
       const response = await fetch(`${API_URL}/api/upload/`, {
         method: "POST",
-        headers: authHeaders(),
         body: formData,
       });
       const result = await response.json();
-      if (!response.ok) throw new Error(result.detail ?? "Upload failed. Please sign in before uploading.");
+      if (!response.ok) throw new Error(result.detail ?? "Upload failed.");
 
       setMessage(`${result.data.original_filename} saved successfully.`);
       onUploaded(result.data.document_id);
