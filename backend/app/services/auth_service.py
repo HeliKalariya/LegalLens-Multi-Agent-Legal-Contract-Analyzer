@@ -45,15 +45,16 @@ class AuthService:
 
         user = self.repository.get_user_by_email(email)
 
+        print("User:", user)
+        print("Email:", email)
+        print("Password Entered:", password)
+
         if not user:
-    
             raise ValueError("Invalid email or password")
 
-        if not verify_password(
-            password,
-            user.hashed_password
-        ):
+        print("Password Match:", verify_password(password, user.hashed_password))
 
+        if not verify_password(password, user.hashed_password):
             raise ValueError("Invalid email or password")
 
         access_token = create_access_token(

@@ -13,8 +13,19 @@ Responsibilities:
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.database.database import engine
+from app.database.base import Base
+
+# Import all models
+from app.models.user import User
+
 # Import API routers
-from app.api.upload import router as upload_router
+#from app.api.upload import router as upload_router
+from app.api.auth import router as auth_router
+from app.api.auth import router as auth_router
+
+# Create database tables
+Base.metadata.create_all(bind=engine)
 
 # ----------------------------------------------------
 # Create FastAPI application
@@ -58,7 +69,8 @@ app.add_middleware(
 #
 # POST /api/upload
 # ----------------------------------------------------
-app.include_router(upload_router)
+#app.include_router(upload_router)
+app.include_router(auth_router)
 
 
 # ----------------------------------------------------
