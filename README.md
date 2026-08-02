@@ -1,6 +1,6 @@
-# ContractIQ
+# LegalLens
 
-ContractIQ is a starter application for uploading and reviewing legal contracts.
+LegalLens is a starter application for uploading and reviewing legal contracts.
 
 ## Run locally
 

@@ -2,10 +2,10 @@
 
 from pathlib import Path
 
-from fastapi import APIRouter, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, File, HTTPException, Query, UploadFile, status
 from fastapi.responses import FileResponse
 
-from app.services.upload_service import UploadService
+from app.services.upload_service import NotALegalDocumentError, UnsupportedLanguageError, UploadService
 
 router = APIRouter(prefix="/api/upload", tags=["Upload"])
 MAX_FILE_SIZE = 20 * 1024 * 1024
@@ -13,7 +13,6 @@ MAX_FILE_SIZE = 20 * 1024 * 1024
 
 @router.post("/", status_code=status.HTTP_201_CREATED)
 async def upload_pdf(file: UploadFile = File(...)):
-    """Validate and save a PDF locally without requiring an account."""
     if not file.filename or Path(file.filename).suffix.lower() != ".pdf":
         raise HTTPException(status_code=400, detail="Only PDF files are allowed.")
 
@@ -33,19 +32,25 @@ def list_pdfs():
 
 @router.post("/{document_id}/analyze")
 def analyze_pdf(document_id: str):
+    """Runs extraction and returns the AI Analysis Report directly (English)."""
     try:
         return UploadService().analyze_pdf(document_id)
     except FileNotFoundError as error:
         raise HTTPException(status_code=404, detail=str(error)) from error
+    except NotALegalDocumentError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
     except ValueError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
 
 
-@router.get("/{document_id}/analysis")
-def get_analysis(document_id: str):
-    report = UploadService().get_analysis(document_id)
+@router.get("/{document_id}/report")
+def get_report(document_id: str, language: str = Query(default="en", description="ISO language code, e.g. en, hi, gu")):
+    try:
+        report = UploadService().get_report(document_id, language)
+    except UnsupportedLanguageError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
     if not report:
-        raise HTTPException(status_code=404, detail="Analysis report not found. Analyze the document first.")
+        raise HTTPException(status_code=404, detail="Report not found. Analyze the document first.")
     return report
 
 

@@ -59,7 +59,7 @@ export default function UploadDropzone({ onUploaded }: UploadDropzoneProps) {
 
   return (
     <div
-      className="mb-8 rounded-3xl border-2 border-dashed border-gray-300 bg-white p-16 shadow-sm transition hover:border-black"
+      className="mb-8 rounded-3xl border-2 border-dashed border-gray-300 bg-[#EAE6DB] p-16 shadow-sm transition hover:border-black"
       onDragOver={(event) => event.preventDefault()}
       onDrop={handleDrop}
     >
