@@ -16,59 +16,27 @@ from fastapi.middleware.cors import CORSMiddleware
 # Import API routers
 from app.api.upload import router as upload_router
 
-# ----------------------------------------------------
-# Create FastAPI application
-# ----------------------------------------------------
+from app.database.init_db import init_db
+
+from app.api.profile import router as profile_router
+
+from fastapi.staticfiles import StaticFiles
+
+import os
+
 app = FastAPI(
-    title="LegalLens API",
-    description="AI Powered Contract Analysis Backend",
-    version="1.0.0",
+    title="LegalLens API"
 )
 
-# ----------------------------------------------------
-# Configure CORS
-#
-# Allows your Next.js frontend to communicate
-# with the FastAPI backend.
-#
-# Change localhost:3000 to your frontend URL
-# when deploying.
-# ----------------------------------------------------
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-    ],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
-# ----------------------------------------------------
-# Register API Routes
-#
-# Every router added here becomes accessible
-# through the backend.
-#
-# Example:
-#
-# upload.py
-#
-# prefix="/api/upload"
-#
-# POST /api/upload
-# ----------------------------------------------------
-app.include_router(upload_router)
+@app.on_event("startup")
+def startup():
 
-# ----------------------------------------------------
-# Root Endpoint
-#
-# Used only to verify that backend is running.
-#
-# URL:
-#
-# GET /
-# ----------------------------------------------------
+    init_db()
+
+
+app.include_router(auth_router)
+
 @app.get("/")
 def home():
     """
@@ -81,3 +49,13 @@ def home():
     return {
         "message": "LegalLens Backend Running Successfully 🚀"
     }
+    
+app.include_router(profile_router)
+
+os.makedirs("uploads/profile", exist_ok=True)
+
+app.mount(
+    "/uploads",
+    StaticFiles(directory="uploads"),
+    name="uploads"
+)

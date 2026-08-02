@@ -40,9 +40,8 @@ Thumbs.db
 # ==========================
 # Uploaded Files
 # ==========================
-uploads/*
-!uploads/.gitkeep
 
+!uploads/profile/.gitkeep
 reports/*
 !reports/.gitkeep
 
@@ -78,3 +77,4 @@ docker-compose.override.yml
 # ==========================
 # Keep migrations in Git
 # Do NOT ignore migrations/
+

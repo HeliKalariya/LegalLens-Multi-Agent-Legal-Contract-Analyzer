@@ -28,3 +28,17 @@ class User(Base):
         default=datetime.utcnow,
         onupdate=datetime.utcnow
     )
+    organization = Column(
+        String(150),
+        nullable=True
+    )
+
+    job_title = Column(
+        String(100),
+        nullable=True
+    )
+
+    profile_image = Column(
+        String(255),
+        nullable=True
+    )
