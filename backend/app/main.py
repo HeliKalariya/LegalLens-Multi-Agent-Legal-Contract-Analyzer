@@ -1,15 +1,38 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 
+from app.database.database import engine
+from app.database.base import Base
+
+# Import all models
+from app.models.user import User
+
+# Import API routers
+#from app.api.upload import router as upload_router
 from app.api.auth import router as auth_router
-from app.api.profile import router as profile_router
-from app.database.init_db import init_db
+from app.api.auth import router as auth_router
 
-import os
+# Create database tables
+Base.metadata.create_all(bind=engine)
 
-app = FastAPI(title="LegalLens API")
+# ----------------------------------------------------
+# Create FastAPI application
+# ----------------------------------------------------
+app = FastAPI(
+    title="LegalLens API",
+    description="AI Powered Contract Analysis Backend",
+    version="1.0.0",
+)
 
+# ----------------------------------------------------
+# Configure CORS
+#
+# Allows your Next.js frontend to communicate
+# with the FastAPI backend.
+#
+# Change localhost:3000 to your frontend URL
+# when deploying.
+# ----------------------------------------------------
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -20,13 +43,33 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-@app.on_event("startup")
-def startup():
-    init_db()
-
+# ----------------------------------------------------
+# Register API Routes
+#
+# Every router added here becomes accessible
+# through the backend.
+#
+# Example:
+#
+# upload.py
+#
+# prefix="/api/upload"
+#
+# POST /api/upload
+# ----------------------------------------------------
+#app.include_router(upload_router)
 app.include_router(auth_router)
-app.include_router(profile_router)
 
+
+# ----------------------------------------------------
+# Root Endpoint
+#
+# Used only to verify that backend is running.
+#
+# URL:
+#
+# GET /
+# ----------------------------------------------------
 @app.get("/")
 def home():
     return {"message": "LegalLens Backend Running"}
