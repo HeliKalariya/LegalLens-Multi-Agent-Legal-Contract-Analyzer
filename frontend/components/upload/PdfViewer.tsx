@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { X } from "lucide-react";
-import { API_URL } from "@/lib/api";
+import { API_URL, authenticatedFetch } from "@/lib/api";
 
 type PdfViewerProps = {
   documentId: string | null;
@@ -22,7 +22,7 @@ export default function PdfViewer({ documentId, onClose }: PdfViewerProps) {
       setPreviewUrl(null);
       setError("");
       try {
-        const response = await fetch(`${API_URL}/api/upload/${documentId}/download`);
+        const response = await authenticatedFetch(`${API_URL}/api/upload/${documentId}/preview`);
         if (!response.ok) {
           const result = await response.json();
           throw new Error(result.detail ?? "Could not open PDF.");

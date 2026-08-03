@@ -7,13 +7,14 @@ import {
   FileText,
   Sparkles,
 } from "lucide-react";
+import { toast } from "sonner";
 
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import PdfViewer from "@/components/upload/PdfViewer";
 import UploadDropzone from "@/components/upload/UploadDropzone";
 import RecentUploads from "@/components/upload/RecentUploads";
 
-import { API_URL } from "@/lib/api";
+import { API_URL, authenticatedFetch } from "@/lib/api";
 
 const LANGUAGES = [
   { code: "en", label: "🇺🇸 English" },
@@ -48,7 +49,7 @@ export default function UploadPage() {
     setAnalysisError("");
 
     try {
-      const analyze = await fetch(
+      const analyze = await authenticatedFetch(
         `${API_URL}/api/upload/${uploadedDocumentId}/analyze`,
         {
           method: "POST",
@@ -66,6 +67,7 @@ export default function UploadPage() {
       router.push(
         `/analysis/${uploadedDocumentId}?language=${language}`
       );
+      toast.success("Analysis completed successfully.");
     } catch (err) {
       setAnalysisError(
         err instanceof Error

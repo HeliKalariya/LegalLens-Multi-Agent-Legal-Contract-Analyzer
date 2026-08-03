@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard,
   FileText,
@@ -10,6 +10,7 @@ import {
   Bot,
   Shield,
   Settings,
+  LogOut,
 } from "lucide-react";
 
 const menuItems = [
@@ -52,6 +53,12 @@ const menuItems = [
 
 export default function Sidebar() {
   const pathname = usePathname();
+  const router = useRouter();
+
+  function logout() {
+    localStorage.removeItem("access_token");
+    router.push("/login");
+  }
 
   return (
     <aside className="sticky top-0 flex h-screen w-64 flex-col border-r border-gray-200 bg-[#EAE6DB]">
@@ -103,6 +110,17 @@ export default function Sidebar() {
           })}
         </ul>
       </nav>
+
+      <div className="border-t border-gray-200 p-4">
+        <button
+          type="button"
+          onClick={logout}
+          className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium text-gray-600 transition hover:bg-red-50 hover:text-red-600"
+        >
+          <LogOut size={20} />
+          <span>Log out</span>
+        </button>
+      </div>
 
     </aside>
   );

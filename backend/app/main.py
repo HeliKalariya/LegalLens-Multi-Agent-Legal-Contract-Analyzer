@@ -1,83 +1,72 @@
+import os
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from app.database.database import engine
 from app.database.base import Base
+from app.config import settings
+from app.database.init_db import init_db
 
-# Import all models
-from app.models.user import User
-
-# Import API routers
-#from app.api.upload import router as upload_router
+# Import API routers.
 from app.api.auth import router as auth_router
-from app.api.auth import router as auth_router
+from app.api.upload import router as upload_router
 
-# Create database tables
-Base.metadata.create_all(bind=engine)
 
-# ----------------------------------------------------
-# Create FastAPI application
-# ----------------------------------------------------
+PROFILE_UPLOAD_DIRECTORY = str(settings.UPLOAD_DIR / "profile")
+os.makedirs(PROFILE_UPLOAD_DIRECTORY, exist_ok=True)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    Run application startup initialization.
+    """
+
+    # Fine for development. Use Alembic migrations in production.
+    init_db()
+
+    yield
+
+
 app = FastAPI(
     title="LegalLens API",
     description="AI Powered Contract Analysis Backend",
     version="1.0.0",
+    lifespan=lifespan,
 )
 
-# ----------------------------------------------------
-# Configure CORS
-#
-# Allows your Next.js frontend to communicate
-# with the FastAPI backend.
-#
-# Change localhost:3000 to your frontend URL
-# when deploying.
-# ----------------------------------------------------
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:3000",
+        "http://127.0.0.1:3000",
+
+        # Include this only when opening the frontend using this address.
+        "http://192.168.106.1:3000",
     ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# ----------------------------------------------------
-# Register API Routes
-#
-# Every router added here becomes accessible
-# through the backend.
-#
-# Example:
-#
-# upload.py
-#
-# prefix="/api/upload"
-#
-# POST /api/upload
-# ----------------------------------------------------
-#app.include_router(upload_router)
+
+# API routes
 app.include_router(auth_router)
+app.include_router(upload_router)
 
 
-# ----------------------------------------------------
-# Root Endpoint
-#
-# Used only to verify that backend is running.
-#
-# URL:
-#
-# GET /
-# ----------------------------------------------------
+# Static uploaded files
+app.mount(
+    "/uploads/profile",
+    StaticFiles(directory=PROFILE_UPLOAD_DIRECTORY),
+    name="profile-uploads",
+)
+
+
 @app.get("/")
 def home():
     return {"message": "LegalLens Backend Running"}
-
-os.makedirs("uploads/profile", exist_ok=True)
-
-app.mount(
-    "/uploads",
-    StaticFiles(directory="uploads"),
-    name="uploads"
-)

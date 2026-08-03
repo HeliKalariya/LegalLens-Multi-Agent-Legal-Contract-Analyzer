@@ -5,9 +5,6 @@ from dotenv import load_dotenv
 
 # Load local development values before creating the settings object.
 load_dotenv()
-print("MAIL_USERNAME =", os.getenv("MAIL_USERNAME"))
-print("MAIL_SERVER =", os.getenv("MAIL_SERVER"))
-print("DATABASE_URL =", os.getenv("DATABASE_URL"))
 
 class Settings:
 

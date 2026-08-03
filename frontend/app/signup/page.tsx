@@ -26,6 +26,7 @@
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [loading, setLoading] = useState(false);
+    const [backendError, setBackendError] = useState("");
     const [errors, setErrors] = useState({
       fullName: "",
       email: "",
@@ -46,6 +47,8 @@
     });
     
     const handleSignup = async () => {
+
+      setBackendError("");
 
       const validationErrors = validateSignup(
     fullName,
@@ -91,18 +94,11 @@
 
     console.error(error);
 
-    if (error instanceof Error) {
-
-      if (error.message === "Email already exists") {
-
-        setErrors({
-          fullName: "",
-          email: error.message,
-          password: "",
-        });
-
-      }
-
+    const message = error instanceof Error ? error.message : "Could not create account.";
+    if (message === "Email already exists") {
+      setErrors({ fullName: "", email: message, password: "" });
+    } else {
+      setBackendError(message);
     }
     
   }
@@ -226,6 +222,12 @@
                 disabled={loading || !isFormValid}
             />
           </div>
+
+          {backendError && (
+            <p className="mt-3 rounded-md border border-red-500 bg-red-100 px-3 py-2 text-sm text-red-700">
+              {backendError}
+            </p>
+          )}
 
           {/* Divider */}
 

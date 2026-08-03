@@ -2,7 +2,8 @@
 
 import { ChangeEvent, DragEvent, useRef, useState } from "react";
 import { UploadCloud } from "lucide-react";
-import { API_URL } from "@/lib/api";
+import { toast } from "sonner";
+import { API_URL, authenticatedFetch } from "@/lib/api";
 
 type UploadDropzoneProps = {
   onUploaded: (documentId: string) => void;
@@ -29,7 +30,7 @@ export default function UploadDropzone({ onUploaded }: UploadDropzoneProps) {
     formData.append("file", file);
 
     try {
-      const response = await fetch(`${API_URL}/api/upload/`, {
+      const response = await authenticatedFetch(`${API_URL}/api/upload/`, {
         method: "POST",
         body: formData,
       });
@@ -37,6 +38,7 @@ export default function UploadDropzone({ onUploaded }: UploadDropzoneProps) {
       if (!response.ok) throw new Error(result.detail ?? "Upload failed.");
 
       setMessage(`${result.data.original_filename} saved successfully.`);
+      toast.success("Legal document saved successfully.");
       onUploaded(result.data.document_id);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Upload failed.");

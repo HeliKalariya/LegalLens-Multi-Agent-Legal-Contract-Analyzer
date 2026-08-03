@@ -1,7 +1,8 @@
 from passlib.context import CryptContext
 
 pwd_context = CryptContext(
-    schemes=["bcrypt"],
+    # New passwords use Argon2; bcrypt remains here so existing users can sign in.
+    schemes=["argon2", "bcrypt"],
     deprecated="auto"
 )
 

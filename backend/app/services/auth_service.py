@@ -7,9 +7,6 @@ from app.security.hashing import hash_password
 from app.security.hashing import verify_password
 from app.security.jwt import create_access_token
 
-from app.repositories.user_repository import UserRepository
-
-from app.security.hashing import hash_password
 from app.security.jwt import (
     create_reset_token,
     verify_reset_token
@@ -45,16 +42,16 @@ class AuthService:
 
         user = self.repository.get_user_by_email(email)
 
-        print("User:", user)
-        print("Email:", email)
-        print("Password Entered:", password)
-
         if not user:
             raise ValueError("Invalid email or password")
 
-        print("Password Match:", verify_password(password, user.hashed_password))
+        try:
+            password_matches = verify_password(password, user.hashed_password)
+        except ValueError:
+            # Older bcrypt records cannot evaluate passwords beyond bcrypt's limit.
+            password_matches = False
 
-        if not verify_password(password, user.hashed_password):
+        if not password_matches:
             raise ValueError("Invalid email or password")
 
         access_token = create_access_token(

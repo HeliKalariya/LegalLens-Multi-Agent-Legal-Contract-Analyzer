@@ -49,9 +49,9 @@ export function validateLogin(
     errors.password =
       "Password must be at least 8 characters.";
   }
-  else if (trimmedPassword.length > 100) {
+  else if (trimmedPassword.length > 128) {
     errors.password =
-      "Password cannot exceed 100 characters.";
+      "Password cannot exceed 128 characters.";
   }
 
   return errors;

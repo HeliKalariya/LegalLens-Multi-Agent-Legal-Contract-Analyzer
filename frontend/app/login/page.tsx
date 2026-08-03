@@ -49,6 +49,9 @@ const [errors, setErrors] = useState({
 
  const handleLogin = async () => {
 
+  setBackendError("");
+  setSuccessMessage("");
+
   // Run Validation
   const validationErrors = validateLogin(
     email,
@@ -71,53 +74,32 @@ const [errors, setErrors] = useState({
 
   try {
 
-    const response = await fetch(
-      `${process.env.NEXT_PUBLIC_API_URL}/api/auth/login`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          email,
-          password,
-        }),
-      }
-    );
-
-    const data = await response.json();
-
-    if (response.ok) {
+    const data = await loginUser(email, password);
 
       setSuccessMessage("Login Successful!");
 
         localStorage.setItem(
-          "token",
+          "access_token",
           data.access_token
         );
 
         setTimeout(() => {
-          router.push("/dashboard");
+          router.push("/upload");
         }, 1500);
-
-    } else {
-
-      setBackendError(
-        data.detail || "Invalid email or password."
-      );
-
-    }
 
   } catch (error) {
 
     console.error(error);
 
     setBackendError(
-      "Unable to connect to the server. Please try again."
+      error instanceof Error
+        ? error.message
+        : "Unable to connect to the server. Please try again."
     );
+  }
+  finally {
     setLoading(false);
   }
-  
 };
   return (
     <AuthLayout>

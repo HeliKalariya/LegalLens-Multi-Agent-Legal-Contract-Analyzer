@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { FileText } from "lucide-react";
-import { API_URL } from "@/lib/api";
+import { API_URL, authenticatedFetch } from "@/lib/api";
 
 type Document = {
   document_id: string;
@@ -40,7 +40,7 @@ export default function RecentUploads({
         setIsLoading(true);
         setError("");
 
-        const response = await fetch(`${API_URL}/api/upload/`, {
+        const response = await authenticatedFetch(`${API_URL}/api/upload/`, {
           signal: controller.signal,
         });
 

@@ -12,7 +12,7 @@ from app.security.jwt import verify_token
 
 
 oauth2_scheme = OAuth2PasswordBearer(
-    tokenUrl="/api/auth/token"
+    tokenUrl="/api/auth/login"
 )
 
 def get_current_user(
@@ -22,9 +22,7 @@ def get_current_user(
     db: Session = Depends(get_db)
 
 ):
-    print("TOKEN RECEIVED:", token)
     payload = verify_token(token)
-    print("PAYLOAD:", payload)
     if payload is None:
 
         raise HTTPException(
@@ -36,11 +34,9 @@ def get_current_user(
         )
 
     email = payload.get("sub")
-    print("EMAIL:", email)
     repository = UserRepository(db)
 
     user = repository.get_user_by_email(email)
-    print("USER:", user)
     if not user:
 
         raise HTTPException(

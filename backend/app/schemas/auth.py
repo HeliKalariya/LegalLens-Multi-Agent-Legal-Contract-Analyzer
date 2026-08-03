@@ -14,7 +14,7 @@ class RegisterRequest(BaseModel):
     password: str = Field(
         ...,
         min_length=8,
-        max_length=100
+        max_length=128
     )
 
 
@@ -23,6 +23,16 @@ class LoginRequest(BaseModel):
     email: EmailStr
 
     password: str
+
+
+class ProfileUpdateRequest(BaseModel):
+    """Editable fields for the signed-in user's profile."""
+
+    full_name: str = Field(..., min_length=3, max_length=100)
+    email: EmailStr
+    organization: str | None = Field(default=None, max_length=150)
+    job_title: str | None = Field(default=None, max_length=100)
+
 
 
 class ForgotPasswordRequest(BaseModel):
@@ -40,9 +50,10 @@ class ResetPasswordRequest(BaseModel):
     new_password: str = Field(
         ...,
         min_length=8,
-        max_length=100,
+        max_length=128,
         description="New Password"
     )
+
 
 
 class TokenResponse(BaseModel):

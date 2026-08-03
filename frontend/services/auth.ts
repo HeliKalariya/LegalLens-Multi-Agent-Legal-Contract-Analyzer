@@ -1,9 +1,11 @@
+import { API_URL } from "@/lib/api";
+
 export async function loginUser(
     email: string,
     password: string
 ) {
     const response = await fetch(
-        "http://127.0.0.1:8000/api/auth/login",
+        `${API_URL}/api/auth/login`,
         {
             method: "POST",
             headers: {
@@ -16,11 +18,9 @@ export async function loginUser(
         }
     );
 
-    if (!response.ok) {
-        throw new Error("Invalid email or password");
-    }
-
-    return await response.json();
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.detail ?? "Invalid email or password");
+    return data;
 }
 
 
@@ -33,7 +33,7 @@ export async function registerUser(
 ) {
 
     const response = await fetch(
-        "http://127.0.0.1:8000/api/auth/register",
+        `${API_URL}/api/auth/register`,
         {
             method: "POST",
 
