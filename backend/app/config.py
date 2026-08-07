@@ -11,9 +11,11 @@ class Settings:
     # ==========================
     # Database
     # ==========================
-    # SQLite keeps the starter project runnable without a separate database.
-    # Set DATABASE_URL in .env to use PostgreSQL or another SQLAlchemy database.
-    DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./contractiq.db")
+    # PostgreSQL is required. Configure DATABASE_URL in backend/.env.
+    DATABASE_URL = os.getenv("DATABASE_URL", "")
+
+    if not DATABASE_URL.startswith("postgresql"):
+        raise RuntimeError("DATABASE_URL must be a PostgreSQL connection string (postgresql://...)")
 
     # ==========================
     # JWT

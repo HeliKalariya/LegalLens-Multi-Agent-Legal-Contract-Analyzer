@@ -5,7 +5,7 @@ import Image from "next/image";
 
 export default function Navbar() {
   return (
-    <header className="sticky top-0 z-40 flex h-16 items-center justify-between border-b border-gray-200 bg-[#F5F1E9] px-6">
+    <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-gray-200 bg-[#F5F1E9] px-4 pl-16 sm:px-6 sm:pl-16 lg:pl-6">
       {/* Search */}
       <div className="flex flex-1 max-w-2xl">
         <div className="relative w-full">
@@ -23,7 +23,7 @@ export default function Navbar() {
       </div>
 
       {/* Right Side */}
-      <div className="ml-8 flex items-center gap-5">
+      <div className="ml-3 flex shrink-0 items-center gap-2 sm:ml-8 sm:gap-5">
         {/* Notification */}
         <button className="relative rounded-lg p-2 transition hover:bg-gray-100">
           <Bell size={21} />
@@ -32,7 +32,7 @@ export default function Navbar() {
         </button>
 
         {/* Divider */}
-        <div className="h-7 w-px bg-gray-200" />
+        <div className="hidden h-7 w-px bg-gray-200 sm:block" />
 
         {/* User */}
         <button className="flex items-center gap-3 rounded-xl px-2 py-1 transition hover:bg-gray-100">

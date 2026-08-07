@@ -105,7 +105,7 @@ const [errors, setErrors] = useState({
     <AuthLayout>
       <AuthHeader />
 
-      <div className="bg-[#F5F1E8] border border-gray-300 rounded-xl shadow-md p-4">
+      <div className="rounded-3xl border-2 border-black/15 bg-[#F5F1E8] p-5 shadow-lg shadow-black/10 sm:p-6">
 
         {/* Heading */}
 
