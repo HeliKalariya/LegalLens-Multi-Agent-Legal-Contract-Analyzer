@@ -5,16 +5,14 @@ import { useRouter } from "next/navigation";
 import {
   Languages,
   FileText,
-  Sparkles,
 } from "lucide-react";
-import { toast } from "sonner";
 
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import PdfViewer from "@/components/upload/PdfViewer";
 import UploadDropzone from "@/components/upload/UploadDropzone";
 import RecentUploads from "@/components/upload/RecentUploads";
-
 import { API_URL, authenticatedFetch } from "@/lib/api";
+
 
 const LANGUAGES = [
   { code: "en", label: "🇺🇸 English" },
@@ -38,59 +36,54 @@ export default function UploadPage() {
   const [language, setLanguage] = useState("en");
 
   const [analysisError, setAnalysisError] = useState("");
+  const [analysisJob, setAnalysisJob] = useState<{ progress: number; current_step: string } | null>(null);
 
-  const [isAnalyzing, setIsAnalyzing] =
-    useState(false);
-
-  async function analyzeDocument() {
+  async function startAnalysis() {
     if (!uploadedDocumentId) return;
-
-    setIsAnalyzing(true);
     setAnalysisError("");
-
     try {
-      const analyze = await authenticatedFetch(
-        `${API_URL}/api/upload/${uploadedDocumentId}/analyze`,
-        {
-          method: "POST",
+      const response = await authenticatedFetch(`${API_URL}/api/upload/${uploadedDocumentId}/analysis-jobs`, { method: "POST" });
+      const job = await response.json();
+      if (!response.ok) throw new Error(job.detail ?? "Could not start analysis.");
+      setAnalysisJob(job);
+
+      const pollJob = async () => {
+        const statusResponse = await authenticatedFetch(`${API_URL}/api/upload/${uploadedDocumentId}/analysis-jobs/${job.job_id}`);
+        const statusData = await statusResponse.json();
+        if (!statusResponse.ok) throw new Error(statusData.detail ?? "Could not check analysis progress.");
+        setAnalysisJob(statusData);
+        if (statusData.status === "completed") {
+          router.push(`/analysis/${uploadedDocumentId}?language=${language}`);
+          return;
         }
-      );
-
-      const analyzeResult = await analyze.json();
-
-      if (!analyze.ok) {
-        throw new Error(
-          analyzeResult.detail ?? "Analysis failed."
-        );
-      }
-
-      router.push(
-        `/analysis/${uploadedDocumentId}?language=${language}`
-      );
-      toast.success("Analysis completed successfully.");
-    } catch (err) {
-      setAnalysisError(
-        err instanceof Error
-          ? err.message
-          : "Analysis failed."
-      );
-    } finally {
-      setIsAnalyzing(false);
+        if (statusData.status === "failed") throw new Error(statusData.error_message ?? "Analysis failed.");
+        window.setTimeout(() => void pollJob().catch((error) => {
+          setAnalysisError(error instanceof Error ? error.message : "Analysis failed.");
+          setAnalysisJob(null);
+        }), 1200);
+      };
+      window.setTimeout(() => void pollJob().catch((error) => {
+        setAnalysisError(error instanceof Error ? error.message : "Analysis failed.");
+        setAnalysisJob(null);
+      }), 700);
+    } catch (error) {
+      setAnalysisError(error instanceof Error ? error.message : "Could not start analysis.");
+      setAnalysisJob(null);
     }
   }
 
   return (
     <DashboardLayout>
 
-      <div className="mx-auto max-w-6xl">
+      <div className="mx-auto w-full max-w-6xl">
 
-        <div className="mb-10">
+        <div className="mb-6 sm:mb-10">
 
-          <h1 className="text-4xl font-bold">
+          <h1 className="text-3xl font-bold sm:text-4xl">
             AI Contract Analyzer
           </h1>
 
-          <p className="mt-3 text-gray-600 text-lg">
+          <p className="mt-3 text-base text-gray-600 sm:text-lg">
             Upload a legal document, choose your preferred
             language, and receive an AI-generated legal report
             with clause explanations, risk analysis, and
@@ -107,7 +100,7 @@ export default function UploadPage() {
           }}
         />
 
-        <section className="mt-8 rounded-3xl border bg-[#EAE6DB] p-8 shadow-sm">
+        <section className="mt-6 rounded-2xl border bg-[#EAE6DB] p-5 shadow-sm sm:mt-8 sm:rounded-3xl sm:p-8">
 
           <div className="flex items-center gap-3 mb-6">
 
@@ -133,7 +126,7 @@ export default function UploadPage() {
             onChange={(e) =>
               setLanguage(e.target.value)
             }
-            className="w-full rounded-xl border p-4 text-lg"
+            className="w-full rounded-xl border p-3 text-base sm:p-4 sm:text-lg"
           >
             {LANGUAGES.map((lang) => (
               <option
@@ -147,7 +140,8 @@ export default function UploadPage() {
 
         </section>
 
-        <section className="mt-8 rounded-3xl  p-8">
+        {uploadedDocumentId && (
+        <section className="mt-6 rounded-2xl p-0 sm:mt-8 sm:rounded-3xl sm:p-8">
 
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
 
@@ -187,19 +181,14 @@ export default function UploadPage() {
 
             </div>
 
-            <div className="min-w-[240px]">
+            <div className="w-full md:min-w-[240px] md:w-auto">
 
               <button
-                onClick={() => void analyzeDocument()}
-                disabled={
-                  !uploadedDocumentId ||
-                  isAnalyzing
-                }
-                className="w-full rounded-2xl bg-black py-4 text-lg font-semibold text-white hover:bg-gray-900 disabled:bg-gray-300"
+                onClick={() => void startAnalysis()}
+                disabled={Boolean(analysisJob)}
+                className="w-full rounded-2xl bg-black py-3 text-base font-semibold text-white hover:bg-gray-900 disabled:bg-gray-300 sm:py-4 sm:text-lg"
               >
-                {isAnalyzing
-                  ? "Generating Report..."
-                  : "Generate AI Report"}
+                Analyze document
               </button>
 
             </div>
@@ -217,14 +206,15 @@ export default function UploadPage() {
           )}
 
         </section>
+        )}
 
-        <section className="mt-10">
+        <section className="mt-8 sm:mt-10">
 
           <div className="mb-5 flex items-center gap-2">
 
             <FileText className="text-blue-600"/>
 
-            <h2 className="text-2xl font-bold">
+            <h2 className="text-xl font-bold sm:text-2xl">
               Recent Uploads
             </h2>
 
@@ -233,6 +223,12 @@ export default function UploadPage() {
           <RecentUploads
             refreshKey={refreshKey}
             onOpenPdf={setSelectedDocumentId}
+            onDeleted={(documentId) => {
+              if (selectedDocumentId === documentId) {
+                setSelectedDocumentId(null);
+              }
+              setRefreshKey((current) => current + 1);
+            }}
           />
 
         </section>
@@ -245,6 +241,19 @@ export default function UploadPage() {
           setSelectedDocumentId(null)
         }
       />
+
+      {analysisJob && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-md rounded-2xl bg-[#F7F3EA] p-6 text-center shadow-2xl sm:p-8">
+            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-[#E8F2FC] text-2xl text-[#0875D1]">✦</div>
+            <h2 className="mt-5 text-xl font-bold text-[#181211]">AI is analyzing your document</h2>
+            <p className="mt-2 text-sm leading-6 text-[#67758A]">Our legal specialists are extracting clauses, assessing risks, simplifying language, and preparing negotiation guidance.</p>
+            <div className="mt-6 h-2 overflow-hidden rounded-full bg-[#DDD7CC]"><div className="h-full rounded-full bg-[#0875D1] transition-all" style={{ width: `${Math.max(8, analysisJob.progress)}%` }} /></div>
+            <p className="mt-3 text-sm font-semibold capitalize text-[#0875D1]">{analysisJob.current_step} · {analysisJob.progress}%</p>
+            <p className="mt-5 text-xs text-[#67758A]">Please keep this page open. You&apos;ll be redirected when analysis is complete.</p>
+          </div>
+        </div>
+      )}
 
     </DashboardLayout>
   );

@@ -2,31 +2,36 @@
 
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Query, UploadFile, status
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from app.database.session import get_db
 from app.models.user import User
 from app.security.oauth import get_current_user
-from app.services.upload_service import NotALegalDocumentError, UnsupportedLanguageError, UploadService
+from app.services.upload_service import DuplicateDocumentError, NotALegalDocumentError, UnsupportedLanguageError, UploadService
 
 router = APIRouter(prefix="/api/upload", tags=["Upload"])
 MAX_FILE_SIZE = 20 * 1024 * 1024
 
 
 @router.post("/", status_code=status.HTTP_201_CREATED)
-async def upload_pdf(file: UploadFile = File(...), db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    """Save a legal PDF to the authenticated user's history."""
-    if not file.filename or Path(file.filename).suffix.lower() != ".pdf":
-        raise HTTPException(status_code=400, detail="Only PDF files are allowed.")
+async def upload_document(file: UploadFile = File(...), db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Save a legal PDF or DOCX file to the authenticated user's history."""
+    suffix = Path(file.filename or "").suffix.lower()
+    if suffix not in {".pdf", ".docx"}:
+        raise HTTPException(status_code=400, detail="Only PDF and DOCX files are allowed.")
     file_bytes = await file.read()
-    if not file_bytes.startswith(b"%PDF-"):
+    if suffix == ".pdf" and not file_bytes.startswith(b"%PDF-"):
         raise HTTPException(status_code=400, detail="The uploaded file is not a valid PDF.")
+    if suffix == ".docx" and not file_bytes.startswith(b"PK"):
+        raise HTTPException(status_code=400, detail="The uploaded file is not a valid DOCX document.")
     if len(file_bytes) > MAX_FILE_SIZE:
         raise HTTPException(status_code=400, detail="Maximum upload size is 20 MB.")
     try:
-        return {"success": True, "data": UploadService(db).save_pdf(current_user.id, file.filename, file_bytes)}
+        return {"success": True, "data": UploadService(db).save_document(current_user.id, file.filename, file_bytes)}
+    except DuplicateDocumentError as error:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
     except NotALegalDocumentError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
     except ValueError as error:
@@ -36,6 +41,43 @@ async def upload_pdf(file: UploadFile = File(...), db: Session = Depends(get_db)
 @router.get("/")
 def list_pdfs(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     return {"data": UploadService(db).list_documents(current_user.id)}
+
+
+@router.delete("/{document_id}")
+def delete_pdf(document_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Delete a PDF only when it belongs to the signed-in user."""
+    try:
+        UploadService(db).delete_document(current_user.id, document_id)
+    except FileNotFoundError as error:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found.") from error
+    return {"message": "Document deleted successfully."}
+
+
+@router.post("/{document_id}/analysis-jobs", status_code=status.HTTP_202_ACCEPTED)
+def create_analysis_job(document_id: str, background_tasks: BackgroundTasks, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Queue the AI analysis and return immediately so the UI can show progress."""
+    try:
+        job = UploadService(db).create_analysis_job(current_user.id, document_id)
+    except FileNotFoundError as error:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found.") from error
+    background_tasks.add_task(UploadService.process_analysis_job, job["job_id"])
+    return job
+
+
+@router.get("/{document_id}/analysis-jobs/{job_id}")
+def get_analysis_job(document_id: str, job_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    try:
+        return UploadService(db).get_analysis_job(current_user.id, document_id, job_id)
+    except FileNotFoundError as error:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(error)) from error
+
+
+@router.get("/{document_id}/analysis")
+def get_analysis(document_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    analysis = UploadService(db).get_analysis(current_user.id, document_id)
+    if not analysis:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Analysis is not ready yet.")
+    return analysis
 
 
 @router.post("/{document_id}/analyze")
@@ -61,7 +103,7 @@ def get_report(document_id: str, language: str = Query(default="en"), db: Sessio
 
 @router.get("/{document_id}/preview")
 def preview_pdf(document_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    file_path = UploadService(db).get_pdf_path(current_user.id, document_id)
+    file_path = UploadService(db).get_preview_path(current_user.id, document_id)
     if not file_path:
-        raise HTTPException(status_code=404, detail="PDF not found.")
+        raise HTTPException(status_code=404, detail="Document preview not found.")
     return FileResponse(file_path, media_type="application/pdf", content_disposition_type="inline")

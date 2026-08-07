@@ -42,3 +42,6 @@ class User(Base):
         String(255),
         nullable=True
     )
+
+    theme = Column(String(30), nullable=False, default="system")
+    notifications = Column(Boolean, nullable=False, default=True)

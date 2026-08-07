@@ -9,18 +9,25 @@ type UploadDropzoneProps = {
   onUploaded: (documentId: string) => void;
 };
 
+function shortenedFilename(filename: string, maxLength = 42) {
+  return filename.length > maxLength ? `${filename.slice(0, maxLength - 3)}...` : filename;
+}
+
 export default function UploadDropzone({ onUploaded }: UploadDropzoneProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [message, setMessage] = useState("");
   const [isUploading, setIsUploading] = useState(false);
 
   async function uploadFile(file: File) {
-    if (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")) {
-      setMessage("Please choose a PDF file.");
+    const filename = file.name.toLowerCase();
+    const isPdf = file.type === "application/pdf" || filename.endsWith(".pdf");
+    const isDocx = file.type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" || filename.endsWith(".docx");
+    if (!isPdf && !isDocx) {
+      setMessage("Please choose a PDF or DOCX legal document.");
       return;
     }
     if (file.size > 20 * 1024 * 1024) {
-      setMessage("PDFs must be 20 MB or smaller.");
+      setMessage("Documents must be 20 MB or smaller.");
       return;
     }
 
@@ -37,7 +44,7 @@ export default function UploadDropzone({ onUploaded }: UploadDropzoneProps) {
       const result = await response.json();
       if (!response.ok) throw new Error(result.detail ?? "Upload failed.");
 
-      setMessage(`${result.data.original_filename} saved successfully.`);
+      setMessage(`${shortenedFilename(result.data.original_filename)} saved successfully.`);
       toast.success("Legal document saved successfully.");
       onUploaded(result.data.document_id);
     } catch (error) {
@@ -61,15 +68,15 @@ export default function UploadDropzone({ onUploaded }: UploadDropzoneProps) {
 
   return (
     <div
-      className="mb-8 rounded-3xl border-2 border-dashed border-gray-300 bg-[#EAE6DB] p-16 shadow-sm transition hover:border-black"
+      className="mb-6 rounded-2xl border-2 border-dashed border-gray-300 bg-[#EAE6DB] p-8 shadow-sm transition hover:border-black sm:mb-8 sm:rounded-3xl sm:p-16"
       onDragOver={(event) => event.preventDefault()}
       onDrop={handleDrop}
     >
       <div className="flex flex-col items-center justify-center text-center">
-        <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-full border border-gray-300">
-          <UploadCloud className="h-10 w-10 text-blue-600" />
+        <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-full border border-gray-300 sm:mb-6 sm:h-20 sm:w-20">
+          <UploadCloud className="h-8 w-8 text-blue-600 sm:h-10 sm:w-10" />
         </div>
-        <h2 className="text-2xl font-semibold">Drop your PDF here</h2>
+        <h2 className="text-xl font-semibold sm:text-2xl">Drop your legal document here</h2>
         <p className="mt-2 text-gray-500">
           or{" "}
           <button
@@ -80,8 +87,8 @@ export default function UploadDropzone({ onUploaded }: UploadDropzoneProps) {
             browse
           </button>
         </p>
-        <input ref={inputRef} type="file" accept="application/pdf,.pdf" className="hidden" onChange={handleFileInput} />
-        <p className="mt-4 text-sm text-gray-400">PDF files up to 20 MB</p>
+        <input ref={inputRef} type="file" accept="application/pdf,.pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.docx" className="hidden" onChange={handleFileInput} />
+        <p className="mt-4 text-sm text-gray-400">PDF or DOCX files up to 20 MB</p>
         {message && <p className="mt-4 text-sm text-gray-700" role="status">{message}</p>}
         {isUploading && <p className="mt-4 text-sm text-blue-600">Saving PDF…</p>}
       </div>

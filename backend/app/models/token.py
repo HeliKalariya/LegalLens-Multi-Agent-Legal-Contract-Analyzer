@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey
+from sqlalchemy import Boolean, Column, Integer, String, DateTime, ForeignKey
 from datetime import datetime, timedelta
 
 from app.database.base import Base
@@ -17,3 +17,6 @@ class PasswordResetToken(Base):
         DateTime,
         default=lambda: datetime.utcnow() + timedelta(minutes=15)
     )
+
+    used = Column(Boolean, nullable=False, default=False)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)

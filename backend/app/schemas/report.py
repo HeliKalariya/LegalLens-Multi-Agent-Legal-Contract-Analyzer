@@ -19,6 +19,10 @@ class ClauseRisk(BaseModel):
     page: int
     negotiable: bool
     source_excerpt: str      # verbatim snippet from the original document (not translated)
+    title: str = ""
+    plain_english: str = ""
+    risk_reason: str = ""
+    negotiation_suggestion: str = ""
 
 
 class ClauseNarrative(BaseModel):
