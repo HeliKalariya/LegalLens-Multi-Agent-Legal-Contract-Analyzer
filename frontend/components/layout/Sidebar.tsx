@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
@@ -11,6 +12,8 @@ import {
   Shield,
   Settings,
   LogOut,
+  Menu,
+  X,
 } from "lucide-react";
 
 const menuItems = [
@@ -54,35 +57,36 @@ const menuItems = [
 export default function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
+  const [isOpen, setIsOpen] = useState(false);
 
   function logout() {
     localStorage.removeItem("access_token");
+    setIsOpen(false);
     router.push("/login");
   }
 
   return (
-    <aside className="sticky top-0 flex h-screen w-64 flex-col border-r border-gray-200 bg-[#EAE6DB]">
+    <>
+      <button
+        type="button"
+        onClick={() => setIsOpen(true)}
+        aria-label="Open navigation menu"
+        className="fixed left-3 top-3 z-50 rounded-xl border border-gray-200 bg-[#F5F1E9] p-2 text-black shadow-sm lg:hidden"
+      >
+        <Menu size={22} />
+      </button>
+
+      {isOpen && <button type="button" aria-label="Close navigation menu" onClick={() => setIsOpen(false)} className="fixed inset-0 z-40 bg-black/40 lg:hidden" />}
+
+      <aside className={`fixed inset-y-0 left-0 z-50 flex h-screen w-68 -translate-x-full flex-col border-r border-gray-200 bg-[#EAE6DB] transition-transform duration-200 lg:sticky lg:top-0 lg:z-auto lg:translate-x-0 ${isOpen ? "translate-x-0" : ""}`}>
       {/* Logo */}
-      <div className="flex h-20 items-center border-b border-gray-200 px-6">
-        <div className="flex items-center gap-3">
-          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-black text-lg font-bold text-white">
-            L
-          </div>
-
-          <div>
-            <h1 className="text-lg font-bold text-gray-900">
-              LegalLens
-            </h1>
-
-            <p className="text-xs text-gray-500">
-              Insights
-            </p>
-          </div>
-        </div>
+      <div className="flex h-20 items-center justify-center border-b border-gray-200 px-2">
+        <img src="/legallens-logo-transparent.png" alt="LegalLens" className="h-20 w-60 object-contain" />
+        <button type="button" onClick={() => setIsOpen(false)} aria-label="Close navigation menu" className="absolute right-3 top-3 rounded-lg p-2 hover:bg-black/5 lg:hidden"><X size={20} /></button>
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 px-4 py-6">
+      <nav className="flex-1 px-4 py-4">
         <ul className="space-y-2">
           {menuItems.map((item) => {
             const Icon = item.icon;
@@ -95,6 +99,7 @@ export default function Sidebar() {
               <li key={item.href}>
                 <Link
                   href={item.href}
+                  onClick={() => setIsOpen(false)}
                   className={`flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition-all ${
                     active
                       ? "bg-[#F5F1E9] text-black shadow-sm"
@@ -122,6 +127,7 @@ export default function Sidebar() {
         </button>
       </div>
 
-    </aside>
+      </aside>
+    </>
   );
 }

@@ -37,6 +37,7 @@ python-jose==3.5.0
 python-multipart==0.0.32
 pytz==2025.2
 pypdf>=5.0
+reportlab>=5.0.0
 rsa==4.9.1
 six==1.17.0
 SQLAlchemy==2.0.51
