@@ -14,6 +14,9 @@ from app.database.init_db import init_db
 from app.api.auth import router as auth_router
 from app.api.upload import router as upload_router
 
+from app.api.dashboard import router as dashboard_router
+
+
 
 PROFILE_UPLOAD_DIRECTORY = str(settings.UPLOAD_DIR / "profile")
 os.makedirs(PROFILE_UPLOAD_DIRECTORY, exist_ok=True)
@@ -37,7 +40,7 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan,
 )
-
+app.include_router(dashboard_router)
 
 app.add_middleware(
     CORSMiddleware,
