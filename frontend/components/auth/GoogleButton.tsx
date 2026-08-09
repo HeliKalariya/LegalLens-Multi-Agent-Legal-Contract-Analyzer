@@ -13,7 +13,7 @@ export default function GoogleButton({
     <button
       type="button"
       onClick={onClick}
-      className="flex w-full items-center justify-center gap-3 rounded-xl border border-gray-300 bg-white py-2 text-sm font-medium text-black transition hover:bg-gray-100"
+      className="flex h-9 w-full items-center justify-center gap-2 rounded-lg border border-black/15 bg-[#F7F3EA] text-xs font-semibold text-[#181211] shadow-sm transition hover:bg-white"
     >
       <Image
         src="/google.svg"
@@ -22,7 +22,7 @@ export default function GoogleButton({
         height={18}
       />
 
-      <span className="font-medium text-black">
+      <span className="font-semibold text-[#181211]">
         {text}
       </span>
     </button>

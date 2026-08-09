@@ -18,10 +18,10 @@ export default function AuthInput({
   onChange,
 }: AuthInputProps) {
   return (
-    <div className="mt-3">
+    <div className="mt-4">
       <label
         htmlFor={name}
-        className="mb-1 block text-sm font-medium text-black"
+        className="mb-2 block text-sm font-semibold text-[#181211]"
       >
         {label}
       </label>
@@ -33,7 +33,7 @@ export default function AuthInput({
         value={value}
         onChange={onChange}
         placeholder={placeholder}
-        className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-black placeholder-gray-500 outline-none transition-all duration-200 focus:border-black focus:ring-2 focus:ring-gray-300"
+        className="h-11 w-full rounded-xl border border-black/15 bg-[#F1EDE3] px-4 text-sm text-[#181211] placeholder:text-[#67758A] outline-none transition focus:border-[#181211] focus:ring-2 focus:ring-black/10"
       />
     </div>
   );

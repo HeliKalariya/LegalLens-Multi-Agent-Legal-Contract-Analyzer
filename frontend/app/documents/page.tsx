@@ -128,9 +128,9 @@ export default function DocumentsPage() {
                   <div className="mt-5 grid grid-cols-2 gap-2">
                     <Link
                       href={`/analysis/${document.document_id}`}
-                      className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-[#0875D1]/30 bg-[#E8F2FC] px-3 text-sm font-semibold text-[#181211] transition hover:bg-[#DCEEFE]"
+                      className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-[#0875D1] bg-[#0875D1] px-3 text-sm font-semibold text-white shadow-sm transition hover:bg-[#065FA8] hover:shadow-md"
                     >
-                      <FileSearch2 className="h-4 w-4 text-[#0875D1]" /> Analysis
+                      <FileSearch2 className="h-4 w-4 text-white" /> Analysis
                     </Link>
                     {document.analysis_status === "analyzed" ? (
                       <Link

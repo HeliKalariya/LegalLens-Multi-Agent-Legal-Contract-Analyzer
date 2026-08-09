@@ -10,7 +10,7 @@ import {
   BarChart3,
   Bot,
   Shield,
-  Settings,
+  UserRound,
   LogOut,
   Menu,
   X,
@@ -19,7 +19,7 @@ import {
 const menuItems = [
   {
     title: "Dashboard",
-    href: "/",
+    href: "/dashboard",
     icon: LayoutDashboard,
   },
   {
@@ -48,9 +48,9 @@ const menuItems = [
     icon: Shield,
   },
   {
-    title: "Settings",
-    href: "/settings",
-    icon: Settings,
+    title: "Profile",
+    href: "/profile",
+    icon: UserRound,
   },
 ];
 
@@ -78,10 +78,10 @@ export default function Sidebar() {
 
       {isOpen && <button type="button" aria-label="Close navigation menu" onClick={() => setIsOpen(false)} className="fixed inset-0 z-40 bg-black/40 lg:hidden" />}
 
-      <aside className={`fixed inset-y-0 left-0 z-50 flex h-screen w-68 -translate-x-full flex-col border-r border-gray-200 bg-[#EAE6DB] transition-transform duration-200 lg:sticky lg:top-0 lg:z-auto lg:translate-x-0 ${isOpen ? "translate-x-0" : ""}`}>
+      <aside className={`theme-sidebar fixed inset-y-0 left-0 z-50 flex h-screen w-68 -translate-x-full flex-col border-r border-gray-200 bg-[#EAE6DB] transition-transform duration-200 lg:sticky lg:top-0 lg:z-auto lg:translate-x-0 ${isOpen ? "translate-x-0" : ""}`}>
       {/* Logo */}
       <div className="flex h-20 items-center justify-center border-b border-gray-200 px-2">
-        <img src="/legallens-logo-transparent.png" alt="LegalLens" className="h-20 w-60 object-contain" />
+        <img src="/legallens-logo-transparent.png" alt="LegalLens" className="theme-logo h-20 w-60 object-contain" />
         <button type="button" onClick={() => setIsOpen(false)} aria-label="Close navigation menu" className="absolute right-3 top-3 rounded-lg p-2 hover:bg-black/5 lg:hidden"><X size={20} /></button>
       </div>
 
@@ -100,9 +100,9 @@ export default function Sidebar() {
                 <Link
                   href={item.href}
                   onClick={() => setIsOpen(false)}
-                  className={`flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition-all ${
+                  className={`sidebar-nav-link flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition-all ${
                     active
-                      ? "bg-[#F5F1E9] text-black shadow-sm"
+                      ? "sidebar-nav-active bg-[#F5F1E9] text-black shadow-sm"
                       : "text-gray-600 hover:bg-[#F5F1E9] hover:text-black"
                   }`}
                 >
@@ -120,7 +120,7 @@ export default function Sidebar() {
         <button
           type="button"
           onClick={logout}
-          className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium text-gray-600 transition hover:bg-red-50 hover:text-red-600"
+          className="sidebar-logout flex w-full items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium text-gray-600 transition hover:bg-red-50 hover:text-red-600"
         >
           <LogOut size={20} />
           <span>Log out</span>

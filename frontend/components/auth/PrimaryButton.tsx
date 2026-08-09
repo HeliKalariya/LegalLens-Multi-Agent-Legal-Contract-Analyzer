@@ -20,7 +20,7 @@ export default function PrimaryButton({
         mt-3
         w-full
         rounded-lg
-        bg-black
+        bg-[#181211]
         py-2
         text-sm
         font-semibold
@@ -31,7 +31,7 @@ export default function PrimaryButton({
         ${
           disabled
             ? "opacity-60 cursor-not-allowed"
-            : "hover:bg-gray-800 active:scale-95"
+            : "hover:bg-black active:scale-[0.99]"
         }
       `}
     >

@@ -180,7 +180,7 @@ export default function AnalysisWorkspacePage() {
                       </button>
                       {isExpanded && <div className="border-t border-black/10 px-4 pb-4 pt-3">
                         <div className="grid grid-cols-4 rounded-xl bg-[#DDD8CF] p-1 text-center text-xs font-semibold">
-                          {(["original", "plain", "risk", "negotiation"] as ClauseTab[]).map((tab) => <button key={tab} type="button" onClick={() => setActiveTab(tab)} className={`rounded-lg px-1 py-2 ${activeTab === tab ? "bg-[#F7F3EA] text-[#181211] shadow-sm" : "text-[#526174]"}`}>{tab === "original" ? "Original" : tab === "plain" ? "Plain English" : tab === "risk" ? "Risk" : "Negotiate"}</button>)}
+                          {(["original", "plain", "risk", "negotiation"] as ClauseTab[]).map((tab) => <button key={tab} type="button" onClick={() => setActiveTab(tab)} className={`analysis-tab rounded-lg px-1 py-2 ${activeTab === tab ? "analysis-tab-active bg-[#F7F3EA] text-[#181211] shadow-sm" : "text-[#526174] hover:bg-[#F7F3EA] hover:text-[#181211]"}`}>{tab === "original" ? "Original" : tab === "plain" ? "Plain English" : tab === "risk" ? "Risk" : "Negotiate"}</button>)}
                         </div>
                         <div className="mt-3 rounded-xl border border-black/15 bg-[#EAE6DB] p-4 text-sm leading-6 text-[#181211]">{detailContent}</div>
                       </div>}

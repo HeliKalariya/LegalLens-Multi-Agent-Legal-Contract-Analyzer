@@ -1,5 +1,6 @@
 import uuid
 from pathlib import Path
+from typing import Literal
 
 from fastapi import APIRouter
 from fastapi import Depends
@@ -8,6 +9,7 @@ from fastapi import HTTPException
 from fastapi import status
 from fastapi import UploadFile
 from fastapi.security import OAuth2PasswordRequestForm
+from pydantic import BaseModel
 
 
 from sqlalchemy.orm import Session
@@ -37,6 +39,12 @@ router = APIRouter(
 )
 
 
+class ThemeUpdateRequest(BaseModel):
+    """The two themes supported by the dashboard."""
+
+    theme: Literal["light", "dark"]
+
+
 def profile_payload(user: User) -> dict:
     """Return the profile shape consumed by the settings screen."""
     return {
@@ -47,6 +55,7 @@ def profile_payload(user: User) -> dict:
         "job_title": user.job_title,
         "profile_image": user.profile_image,
         "role": user.role,
+        "theme": user.theme or "light",
     }
 
 
@@ -161,6 +170,18 @@ def update_profile(
     }
 
 
+@router.put("/theme")
+def update_theme(
+    request: ThemeUpdateRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Persist the dashboard theme for the signed-in user."""
+    current_user.theme = request.theme
+    db.commit()
+    return {"theme": current_user.theme}
+
+
 @router.post("/me/avatar")
 async def upload_profile_avatar(
     file: UploadFile = File(...),
@@ -184,6 +205,22 @@ async def upload_profile_avatar(
     db.commit()
     db.refresh(current_user)
     return {"profile_image": current_user.profile_image}
+
+
+@router.delete("/me/avatar")
+def delete_profile_avatar(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Remove the signed-in user's avatar from local storage and the database."""
+    image_path = current_user.profile_image
+    current_user.profile_image = None
+    db.commit()
+
+    if image_path and image_path.startswith("/uploads/profile/"):
+        (settings.UPLOAD_DIR / "profile" / Path(image_path).name).unlink(missing_ok=True)
+
+    return {"profile_image": None}
 @router.post(
     "/forgot-password",
     response_model=MessageResponse,

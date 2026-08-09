@@ -16,7 +16,6 @@
   import PrimaryButton from "@/components/auth/PrimaryButton";
   import Divider from "@/components/auth/Divider";
   import GoogleButton from "@/components/auth/GoogleButton";
-  import BackHome from "@/components/auth/BackHome";
 
   export default function SignupPage() {
     
@@ -74,7 +73,7 @@
 
     try {
 
-      const data = await registerUser(
+      await registerUser(
         fullName,
         email,
         password
@@ -113,24 +112,24 @@
       <AuthLayout>
         <AuthHeader />
 
-        <div className="bg-[#F5F1E8] border border-gray-300 rounded-xl shadow-md p-4">
+        <div className="rounded-2xl border border-black/15 bg-[#EAE6DB] p-6 shadow-lg shadow-black/5">
 
           {/* Heading */}
 
-          <h2 className="text-xl font-bold text-black">
-            Create Account
+          <h2 className="text-2xl font-bold tracking-tight text-[#181211]">
+            Create your account
           </h2>
 
-          <p className="mt-1 text-[11px] leading-4 text-gray-600">
-            Join Legal Lens and start analyzing legal documents smarter.
+          <p className="mt-1 text-sm text-[#526174]">
+            Get started free. No credit card required.
           </p>
 
-          <div className="space-y-2">
+          <div>
             {/* Full Name */}
             <AuthInput
-              label="Full Name"
+              label="Name"
               type="text"
-              placeholder="John Doe"
+              placeholder="Jane Doe"
               name="name"
               value={fullName}
               onChange={(e) => {
@@ -210,7 +209,7 @@
           </div>
           {/* Create Account Button */}
 
-          <div className="mt-3">
+          <div className="mt-5">
             <PrimaryButton
                 text={
                     loading
@@ -231,7 +230,7 @@
 
           {/* Divider */}
 
-          <div className="my-3">
+          <div>
             <Divider />
           </div>
 
@@ -243,19 +242,17 @@
 
           {/* Login Link */}
 
-          <p className="mt-3 text-center text-xs text-gray-700">
+          <p className="mt-5 text-center text-sm text-[#526174]">
             Already have an account?{" "}
             <Link
               href="/login"
-              className="font-semibold text-black hover:underline"
+              className="font-semibold text-[#181211] hover:underline"
             >
-              Log In
+              Log in
             </Link>
           </p>
 
         </div>
-
-        <BackHome />
 
       </AuthLayout>
     );

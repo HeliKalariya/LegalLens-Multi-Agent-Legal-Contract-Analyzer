@@ -6,8 +6,8 @@ interface AuthLayoutProps {
 
 export default function AuthLayout({ children }: AuthLayoutProps) {
   return (
-    <main className="h-screen overflow-hidden flex items-center justify-center bg-[#F4EFE6] px-4">
-      <div className="w-full max-w-sm">
+    <main className="flex h-dvh items-center justify-center overflow-hidden bg-[#F7F3EA] px-4 py-3 text-[#181211]">
+      <div className="w-full max-w-md">
         {children}
       </div>
     </main>

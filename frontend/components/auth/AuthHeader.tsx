@@ -1,17 +1,12 @@
 import Link from "next/link";
+import Image from "next/image";
 
 export default function AuthHeader() {
   return (
-    <div className="mb-4 text-center">
-      <Link href="/">
-        <h1 className="text-2xl font-bold text-black cursor-pointer">
-          Legal Lens
-        </h1>
+    <div className="mb-4 flex justify-center">
+      <Link href="/" aria-label="LegalLens home" className="block">
+        <Image src="/legallens-logo-transparent.png" alt="LegalLens" width={152} height={56} priority className="theme-logo h-12 w-38 object-contain" />
       </Link>
-
-      <p className="mt-1 text-xs text-gray-600">
-        AI Powered Legal Document Analysis
-      </p>
     </div>
   );
 }

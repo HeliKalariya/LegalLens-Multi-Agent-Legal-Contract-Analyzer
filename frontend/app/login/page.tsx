@@ -2,7 +2,6 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { loginUser } from "@/services/auth";
-/* eslint-disable react/no-unescaped-entities */
 import Link from "next/link";
 
 import { validateLogin } from "@/validations/loginValidation";
@@ -15,7 +14,6 @@ import PasswordInput from "@/components/auth/PasswordInput";
 import PrimaryButton from "@/components/auth/PrimaryButton";
 import Divider from "@/components/auth/Divider";
 import GoogleButton from "@/components/auth/GoogleButton";
-import BackHome from "@/components/auth/BackHome";
 
 export default function LoginPage() {
   
@@ -84,7 +82,7 @@ const [errors, setErrors] = useState({
         );
 
         setTimeout(() => {
-          router.push("/upload");
+          router.push("/dashboard");
         }, 1500);
 
   } catch (error) {
@@ -105,16 +103,16 @@ const [errors, setErrors] = useState({
     <AuthLayout>
       <AuthHeader />
 
-      <div className="rounded-3xl border-2 border-black/15 bg-[#F5F1E8] p-5 shadow-lg shadow-black/10 sm:p-6">
+      <div className="rounded-2xl border border-black/15 bg-[#EAE6DB] p-6 shadow-lg shadow-black/5">
 
         {/* Heading */}
 
-        <h2 className="text-xl font-bold text-black">
-          Welcome Back
+        <h2 className="text-2xl font-bold tracking-tight text-[#181211]">
+          Welcome back
         </h2>
 
-        <p className="mt-1 text-[11px] leading-4 text-gray-600">
-          Log in to continue analyzing your legal documents.
+        <p className="mt-1 text-sm text-[#526174]">
+          Log in to continue analyzing your contracts.
         </p>
 
         {/* Email */}
@@ -155,17 +153,6 @@ const [errors, setErrors] = useState({
 
         <div>
 
-          <div className="flex justify-end mt-2 mb-1">
-
-            <Link
-              href="/forgot-password"
-              className="text-sm text-gray-600 hover:text-black"
-            >
-              Forgot Password?
-            </Link>
-
-          </div>
-
           <PasswordInput
             label="Password"
             placeholder="Enter password"
@@ -189,6 +176,7 @@ const [errors, setErrors] = useState({
               );
 
             }}
+            labelAction={<Link href="/forgot-password" className="text-sm font-normal text-[#526174] transition hover:text-[#181211]">Forgot?</Link>}
           />
           <ErrorMessage
             message={
@@ -216,9 +204,7 @@ const [errors, setErrors] = useState({
 
           <PrimaryButton
               text={
-                loading
-                  ? "Logging in..."
-                  : "Login"
+                loading ? "Logging in..." : "Log in"
               }
               onClick={handleLogin}
               disabled={loading || !isFormValid}
@@ -234,19 +220,17 @@ const [errors, setErrors] = useState({
 
         {/* Signup */}
 
-        <p className="mt-3 text-center text-sm text-gray-700">
-          Don't have an account?{" "}
+        <p className="mt-5 text-center text-sm text-[#526174]">
+          New to LegalLens?{" "}
           <Link
             href="/signup"
-            className="font-semibold text-black hover:underline"
+            className="font-semibold text-[#181211] hover:underline"
           >
-            Sign Up
+            Sign up
           </Link>
         </p>
 
       </div>
-
-      <BackHome />
 
     </AuthLayout>
   );

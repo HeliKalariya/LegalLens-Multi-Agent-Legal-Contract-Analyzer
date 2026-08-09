@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { ReactNode } from "react";
 
 interface PasswordInputProps {
   label: string;
@@ -8,6 +9,7 @@ interface PasswordInputProps {
   name?: string;
   value?: string;
   onChange?: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  labelAction?: ReactNode;
 }
 
 export default function PasswordInput({
@@ -16,15 +18,17 @@ export default function PasswordInput({
   name,
   value,
   onChange,
+  labelAction,
 }: PasswordInputProps) {
   const [showPassword, setShowPassword] = useState(false);
 
   return (
-    <div className="mt-5">
+    <div className="mt-4">
       {/* Label */}
-      <label className="block mb-2 font-medium text-black">
-        {label}
-      </label>
+      <div className="mb-2 flex items-center justify-between gap-3">
+        <label className="text-sm font-semibold text-[#181211]">{label}</label>
+        {labelAction}
+      </div>
 
       {/* Password Input */}
       <div className="relative">
@@ -34,14 +38,14 @@ export default function PasswordInput({
           value={value}
           onChange={onChange}
           placeholder={placeholder}
-          className="w-full h-11 rounded-xl border border-gray-300 bg-white px-4 pr-12 text-black placeholder:text-gray-500 outline-none transition duration-300 focus:ring-2 focus:ring-black"
+          className="h-11 w-full rounded-xl border border-black/15 bg-[#F1EDE3] px-4 pr-12 text-sm text-[#181211] placeholder:text-[#67758A] outline-none transition focus:border-[#181211] focus:ring-2 focus:ring-black/10"
         />
 
         {/* Eye Button */}
         <button
           type="button"
           onClick={() => setShowPassword(!showPassword)}
-          className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-black"
+          className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 transition hover:text-black"
         >
           {showPassword ? "🙈" : "👁"}
         </button>

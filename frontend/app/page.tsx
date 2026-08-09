@@ -34,7 +34,7 @@ export default function Home() {
       <header className="sticky top-0 z-20 border-b border-black/10 bg-[#F7F3EA]/95 backdrop-blur">
         <nav className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-3 px-4 sm:h-20 sm:px-6">
           <Link href="/" className="block" aria-label="LegalLens home">
-            <img src="/legallens-logo-transparent.png" alt="LegalLens" className="h-11 w-32 object-contain sm:h-16 sm:w-56" />
+            <img src="/legallens-logo-transparent.png" alt="LegalLens" className="theme-logo h-11 w-32 object-contain sm:h-16 sm:w-56" />
           </Link>
           <div className="hidden items-center gap-10 text-sm font-medium text-gray-600 md:flex">
             <a href="#features" className="hover:text-black">Features</a>
