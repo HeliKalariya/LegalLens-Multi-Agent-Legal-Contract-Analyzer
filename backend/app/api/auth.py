@@ -17,6 +17,7 @@ from app.database.session import get_db
 
 from app.schemas.auth import RegisterRequest
 from app.schemas.auth import LoginRequest
+from app.schemas.auth import RefreshTokenRequest
 from app.schemas.auth import ProfileUpdateRequest
 from app.services.auth_service import AuthService
 
@@ -132,6 +133,18 @@ def login(
             detail=str(e)
 
         )
+
+
+@router.post("/refresh")
+def refresh_access_token(
+    request: RefreshTokenRequest,
+    db: Session = Depends(get_db),
+):
+    """Keep an active browser session signed in after its access token expires."""
+    try:
+        return AuthService(db).refresh_session(request.refresh_token)
+    except ValueError as error:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(error))
 @router.get("/me")
 def me(
 

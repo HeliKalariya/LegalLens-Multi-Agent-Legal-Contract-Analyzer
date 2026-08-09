@@ -6,7 +6,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timezone
 
-from app.schemas.report import AnalysisReport, ClauseNarrative, ClauseRisk, ReportSummary, TopRisk
+from app.schemas.report import AnalysisReport, ClauseNarrative, ClauseRisk, NegotiationTerm, ReportSummary, TopRisk
 from app.services.llm_providers.groq_client import generate_json
 
 logger = logging.getLogger(__name__)
@@ -47,11 +47,30 @@ Clauses:
 
 
 def _risk_label(score: int) -> str:
-    if score >= 60:
+    """Apply the shared score bands used across documents and reports."""
+    if score >= 75:
         return "HIGH RISK"
-    if score >= 30:
+    if score >= 45:
         return "MODERATE RISK"
-    return "LOW RISK"
+    return "SAFE"
+
+
+def _contract_summary_lines(filename: str, total_pages: int, clauses: list[ClauseRisk], overall_score: int) -> list[str]:
+    """Create a readable seven-line overview without discarding the clause findings."""
+    high_count = sum(clause.risk_level == "high" for clause in clauses)
+    medium_count = sum(clause.risk_level == "medium" for clause in clauses)
+    safe_count = sum(clause.risk_level == "safe" for clause in clauses)
+    main_topics = [clause.title.strip() for clause in sorted(clauses, key=lambda item: item.risk_score, reverse=True) if clause.title.strip()][:3]
+    topics_text = ", ".join(main_topics) if main_topics else "the parties' rights, duties, and remedies"
+    return [
+        f"This report reviews {filename}, a document containing {total_pages} page(s) and {len(clauses)} extracted clause(s).",
+        f"Its overall risk score is {overall_score}/100, based on the balance of obligations, costs, remedies, and exit rights in the agreement.",
+        f"The review found {high_count} high-risk clause(s), {medium_count} moderate clause(s), and {safe_count} clause(s) that appear comparatively balanced.",
+        f"The main areas requiring attention are {topics_text}.",
+        "Read the payment, liability, termination, renewal, confidentiality, and dispute provisions together because they can affect each other in practice.",
+        "Before signing, confirm that deadlines, notice requirements, fees, and responsibilities reflect what both parties actually agreed to deliver.",
+        "Use the negotiation terms below as focused discussion points, and obtain professional legal advice where the commercial impact is significant.",
+    ]
 
 
 def generate_narratives(clauses: list[ClauseRisk], language: str) -> list[ClauseNarrative]:
@@ -109,7 +128,8 @@ def build_report(
         language=language,
     )
 
-    ranked = sorted(clauses, key=lambda c: c.risk_score, reverse=True)[:_TOP_RISK_COUNT]
+    ranked_clauses = sorted(clauses, key=lambda c: c.risk_score, reverse=True)
+    ranked = ranked_clauses[:_TOP_RISK_COUNT]
     top_risks = []
     for rank, clause in enumerate(ranked, start=1):
         narrative = narratives_by_id.get(clause.clause_id)
@@ -123,5 +143,19 @@ def build_report(
             )
         )
 
-    report = AnalysisReport(summary=summary, top_risks=top_risks)
+    negotiation_terms = [
+        NegotiationTerm(
+            title=clause.title.strip() or f"Clause on page {clause.page}",
+            page=clause.page,
+            suggestion=clause.negotiation_suggestion.strip() or f"Ask for clearer, balanced limits for this {clause.title.strip() or 'clause'}.",
+        )
+        for clause in ranked_clauses
+        if clause.negotiable
+    ]
+    report = AnalysisReport(
+        summary=summary,
+        top_risks=top_risks,
+        negotiation_terms=negotiation_terms,
+        contract_summary=_contract_summary_lines(filename, total_pages, clauses, overall_score),
+    )
     return report.model_dump()

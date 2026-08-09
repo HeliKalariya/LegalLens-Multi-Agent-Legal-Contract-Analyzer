@@ -4,6 +4,7 @@
   import { useState} from "react";
   import { useRouter } from "next/navigation";
   import { registerUser } from "@/services/auth";
+  import { toast } from "sonner";
 
   import { validateSignup } from "@/validations/signupValidation";
   import { getPasswordStrength } from "@/utils/passwordStrength";
@@ -25,7 +26,6 @@
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [loading, setLoading] = useState(false);
-    const [backendError, setBackendError] = useState("");
     const [errors, setErrors] = useState({
       fullName: "",
       email: "",
@@ -46,8 +46,6 @@
     });
     
     const handleSignup = async () => {
-
-      setBackendError("");
 
       const validationErrors = validateSignup(
     fullName,
@@ -79,7 +77,7 @@
         password
       );
 
-      alert("Registration Successful!");
+      toast.success("Registration successful!", { description: "Your account is ready. Please log in." });
 
       setErrors({
         fullName: "",
@@ -87,7 +85,7 @@
         password: "",
       });
 
-      router.push("/login");
+      setTimeout(() => router.push("/login"), 700);
 
     }catch (error) {
 
@@ -96,9 +94,8 @@
     const message = error instanceof Error ? error.message : "Could not create account.";
     if (message === "Email already exists") {
       setErrors({ fullName: "", email: message, password: "" });
-    } else {
-      setBackendError(message);
     }
+    toast.error("Registration failed", { description: message });
     
   }
   finally {
@@ -221,12 +218,6 @@
                 disabled={loading || !isFormValid}
             />
           </div>
-
-          {backendError && (
-            <p className="mt-3 rounded-md border border-red-500 bg-red-100 px-3 py-2 text-sm text-red-700">
-              {backendError}
-            </p>
-          )}
 
           {/* Divider */}
 

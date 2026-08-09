@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
-import { ChevronDown, ChevronLeft, ChevronRight, FileText, LoaderCircle } from "lucide-react";
+import { ChevronDown, FileText, LoaderCircle } from "lucide-react";
 import { Document as PdfDocument, Page, pdfjs } from "react-pdf";
 import "react-pdf/dist/Page/TextLayer.css";
 
@@ -27,7 +27,6 @@ export default function AnalysisWorkspacePage() {
   const language = useSearchParams().get("language") ?? "en";
   const [analysis, setAnalysis] = useState<Analysis | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const [currentPage, setCurrentPage] = useState(1);
   const [renderedPages, setRenderedPages] = useState(1);
   const [selectedClauseId, setSelectedClauseId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<ClauseTab>("plain");
@@ -70,25 +69,22 @@ export default function AnalysisWorkspacePage() {
   }, []);
 
   const totalPages = Math.max(analysis?.summary.total_pages ?? 1, renderedPages);
-  // A compact page keeps the full preview visible without internal scrollbars.
-  const pageWidth = Math.min(380, previewWidth || 380);
-  const pageClauses = useMemo(() => (analysis?.clauses ?? []).filter((clause) => clause.page === currentPage), [analysis, currentPage]);
-  const selectedClause = pageClauses.find((clause) => clause.id === selectedClauseId) ?? pageClauses[0] ?? null;
+  // Keep the selected page zoomed enough to read, with scroll inside the preview.
+  const pageWidth = Math.min(560, Math.max(320, (previewWidth || 560) - 24));
+  const allClauses = useMemo(() => (analysis?.clauses ?? []).map((clause) => ({
+    ...clause,
+    // AI page estimates can occasionally exceed the real page count. Never show
+    // an impossible page number or try to render a page that does not exist.
+    page: Math.min(totalPages, Math.max(1, Number(clause.page) || 1)),
+  })), [analysis, totalPages]);
+  const selectedClause = allClauses.find((clause) => clause.id === selectedClauseId) ?? null;
 
-  function highlightSelectedClause() {
+  function highlightAcrossPages() {
     window.setTimeout(() => {
       const root = pagePreviewRef.current;
-      if (!root) return;
-      const spans = [...root.querySelectorAll<HTMLSpanElement>(".react-pdf__Page__textContent span")];
-      spans.forEach((span) => {
-        span.removeAttribute("data-clause-highlight");
-        span.style.removeProperty("background-color");
-        span.style.removeProperty("border-radius");
-        span.style.removeProperty("box-shadow");
-      });
+      const source = selectedClause?.original_text;
+      if (!root || !source || !selectedClause) return;
 
-      // PDF.js divides one sentence into many positioned text spans. Joining those
-      // spans lets us match and highlight the complete saved clause, not just a word.
       const normalize = (value: string) => value
         .replace(/[\u2018\u2019]/g, "'")
         .replace(/[\u201C\u201D]/g, '"')
@@ -96,46 +92,91 @@ export default function AnalysisWorkspacePage() {
         .replace(/\s+/g, " ")
         .trim()
         .toLowerCase();
-      const clauseText = normalize(selectedClause?.original_text ?? "");
-      if (!clauseText) return;
-      const highlightColors: Record<RiskLevel, { fill: string; outline: string }> = {
+      const clauseText = normalize(source);
+      const colors: Record<RiskLevel, { fill: string; outline: string }> = {
         high: { fill: "rgba(254, 202, 202, 0.56)", outline: "rgba(239, 68, 68, 0.30)" },
-        medium: { fill: "rgba(253, 230, 138, 0.56)", outline: "rgba(217, 119, 6, 0.32)" },
+        medium: { fill: "rgba(253, 224, 71, 0.50)", outline: "rgba(202, 138, 4, 0.55)" },
         safe: { fill: "rgba(187, 247, 208, 0.56)", outline: "rgba(22, 163, 74, 0.30)" },
       };
-      const highlightColor = highlightColors[selectedClause?.risk_level ?? "safe"];
+      const color = colors[selectedClause.risk_level];
 
-      let cursor = 0;
-      const segments = spans.map((span) => {
-        const text = normalize(span.textContent ?? "");
-        if (!text) return null;
-        const start = cursor;
-        cursor += text.length + 1;
-        return { span, text, start, end: start + text.length };
-      }).filter((segment): segment is { span: HTMLSpanElement; text: string; start: number; end: number } => segment !== null);
-      const pageText = segments.map((segment) => segment.text).join(" ");
-      let matchStart = pageText.indexOf(clauseText);
-      const matchLength = clauseText.length;
-
-      // If the PDF changes punctuation during text extraction, anchor to the first
-      // words and still highlight the approximate full clause-length range.
-      if (matchStart < 0) {
-        const anchor = clauseText.split(" ").slice(0, 8).join(" ");
-        matchStart = pageText.indexOf(anchor);
-      }
-      if (matchStart < 0) return;
-      const matchEnd = matchStart + matchLength;
-
-      segments.forEach(({ span, start, end }) => {
-        if (end <= matchStart || start >= matchEnd) return;
-        span.setAttribute("data-clause-highlight", "true");
-        // Keep PDF.js text transparent so the original PDF lettering remains visible
-        // through this light overlay.
-        span.style.backgroundColor = highlightColor.fill;
-        span.style.borderRadius = "1px";
-        span.style.boxShadow = `0 0 0 1px ${highlightColor.outline}`;
+      root.querySelectorAll<HTMLSpanElement>(".react-pdf__Page__textContent span").forEach((span) => {
+        span.removeAttribute("data-clause-highlight");
+        span.style.removeProperty("background-color");
+        span.style.removeProperty("border-radius");
+        span.style.removeProperty("box-shadow");
       });
+
+      for (const pageRoot of root.querySelectorAll<HTMLElement>("[data-preview-page]")) {
+        let cursor = 0;
+        const segments = [...pageRoot.querySelectorAll<HTMLSpanElement>(".react-pdf__Page__textContent span")].map((span) => {
+          const text = normalize(span.textContent ?? "");
+          if (!text) return null;
+          const start = cursor;
+          cursor += text.length + 1;
+          return { span, text, start, end: start + text.length };
+        }).filter((segment): segment is { span: HTMLSpanElement; text: string; start: number; end: number } => segment !== null);
+        const pageText = segments.map((segment) => segment.text).join(" ");
+        let start = pageText.indexOf(clauseText);
+        let length = clauseText.length;
+
+        if (start < 0) {
+          const words = clauseText.split(" ").filter((word) => word.length > 2);
+          for (const phraseLength of [10, 8, 6, 5, 4, 3]) {
+            if (start >= 0 || words.length < phraseLength) continue;
+            for (let wordIndex = 0; wordIndex <= words.length - phraseLength; wordIndex += 1) {
+              const phrase = words.slice(wordIndex, wordIndex + phraseLength).join(" ");
+              const position = pageText.indexOf(phrase);
+              if (position >= 0) {
+                start = position;
+                length = Math.max(phrase.length, clauseText.length - words.slice(0, wordIndex).join(" ").length);
+                break;
+              }
+            }
+          }
+        }
+        if (start < 0) {
+          // Some analyses store a lightly paraphrased source. In that case, find the
+          // best matching PDF text span by its meaningful words, then visibly mark it
+          // instead of silently showing no highlight.
+          const keywords = clauseText.split(" ").filter((word) => word.length > 3);
+          let bestSegment: typeof segments[number] | null = null;
+          let bestScore = 0;
+          for (const segment of segments) {
+            const score = keywords.reduce((total, word) => total + (segment.text.includes(word) ? 1 : 0), 0);
+            if (score > bestScore) {
+              bestSegment = segment;
+              bestScore = score;
+            }
+          }
+          if (bestSegment && bestScore >= 2) {
+            bestSegment.span.setAttribute("data-clause-highlight", "true");
+            bestSegment.span.style.backgroundColor = color.fill;
+            bestSegment.span.style.borderRadius = "1px";
+            bestSegment.span.style.boxShadow = `0 0 0 1px ${color.outline}`;
+            pageRoot.scrollIntoView({ behavior: "smooth", block: "center" });
+            return;
+          }
+          continue;
+        }
+
+        const end = Math.min(pageText.length, start + length);
+        segments.forEach((segment) => {
+          if (segment.end <= start || segment.start >= end) return;
+          segment.span.setAttribute("data-clause-highlight", "true");
+          segment.span.style.backgroundColor = color.fill;
+          segment.span.style.borderRadius = "1px";
+          segment.span.style.boxShadow = `0 0 0 1px ${color.outline}`;
+        });
+        pageRoot.scrollIntoView({ behavior: "smooth", block: "center" });
+        return;
+      }
     }, 0);
+  }
+
+  function selectClause(clause: NonNullable<Analysis["clauses"]>[number]) {
+    setSelectedClauseId(clause.id);
+    setActiveTab("plain");
   }
 
   const detailContent = !selectedClause ? "Choose a clause to view its analysis." : activeTab === "original" ? selectedClause.original_text : activeTab === "plain" ? selectedClause.plain_english || selectedClause.original_text : activeTab === "risk" ? selectedClause.risk_reason || "This clause was flagged by the risk specialist for review." : selectedClause.negotiation_suggestion || "Ask for clearer and more balanced language before signing.";
@@ -152,27 +193,26 @@ export default function AnalysisWorkspacePage() {
           </header>
 
           <section className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(330px,.9fr)]">
-            <div className="min-w-0 overflow-hidden rounded-2xl border border-black/10 bg-[#EAE6DB]">
-              <div className="flex items-center justify-between border-b border-black/10 px-4 py-3 text-sm text-[#526174]"><span>Page {currentPage} of {totalPages}</span><span className="max-w-[45%] truncate">{analysis.summary.filename}</span></div>
-              <div ref={pagePreviewRef} className="flex h-[460px] items-start justify-center overflow-hidden bg-[#D5D5D5] p-3 sm:h-[620px] sm:p-4">
-                {previewUrl ? <PdfDocument file={previewUrl} loading={<LoaderCircle className="mt-20 animate-spin text-[#0875D1]" />} onLoadSuccess={({ numPages }) => setRenderedPages(numPages)} error={<p className="mt-20 text-sm text-red-700">Could not render the PDF preview.</p>}><Page key={`${currentPage}-${selectedClause?.id ?? "none"}`} pageNumber={currentPage} width={pageWidth} renderAnnotationLayer={false} renderTextLayer onRenderTextLayerSuccess={highlightSelectedClause} /></PdfDocument> : <div className="mt-20 text-sm text-[#67758A]">Loading PDF...</div>}
+            <div className="flex h-[430px] min-w-0 flex-col overflow-hidden rounded-2xl border border-black/10 bg-[#EAE6DB] sm:h-[520px]">
+              <div className="flex items-center justify-between border-b border-black/10 px-4 py-3 text-sm text-[#526174]"><span>Full document preview · {totalPages} pages</span><span className="max-w-[45%] truncate">{analysis.summary.filename}</span></div>
+              <div ref={pagePreviewRef} className="min-h-0 flex-1 overflow-auto overscroll-contain bg-[#D5D5D5] p-3 sm:p-5">
+                {previewUrl ? <PdfDocument file={previewUrl} loading={<LoaderCircle className="mx-auto mt-20 animate-spin text-[#0875D1]" />} onLoadSuccess={({ numPages }) => setRenderedPages(numPages)} error={<p className="mt-20 text-center text-sm text-red-700">Could not render the PDF preview.</p>}><div className="flex min-w-max flex-col items-center gap-6">{Array.from({ length: totalPages }, (_, index) => { const pageNumber = index + 1; return <div key={`${pageNumber}-${selectedClause?.id ?? "none"}`} data-preview-page={pageNumber} className="shadow-md"><Page pageNumber={pageNumber} width={pageWidth} renderAnnotationLayer={false} renderTextLayer onRenderTextLayerSuccess={highlightAcrossPages} /></div>; })}</div></PdfDocument> : <div className="mt-20 text-center text-sm text-[#67758A]">Loading PDF...</div>}
               </div>
-              <div className="flex items-center justify-between border-t border-black/10 p-3"><button type="button" disabled={currentPage === 1} onClick={() => { setCurrentPage((value) => value - 1); setSelectedClauseId(null); setActiveTab("plain"); }} className="inline-flex items-center gap-1 rounded-lg px-3 py-2 text-sm font-semibold hover:bg-[#F7F3EA] disabled:opacity-40"><ChevronLeft className="h-4 w-4" /> Previous</button><button type="button" disabled={currentPage === totalPages} onClick={() => { setCurrentPage((value) => value + 1); setSelectedClauseId(null); setActiveTab("plain"); }} className="inline-flex items-center gap-1 rounded-lg px-3 py-2 text-sm font-semibold hover:bg-[#F7F3EA] disabled:opacity-40">Next <ChevronRight className="h-4 w-4" /></button></div>
             </div>
 
-            <aside className="min-w-0 overflow-hidden rounded-2xl border border-black/15 bg-[#EAE6DB]">
+            <aside className="flex h-[430px] min-w-0 flex-col overflow-hidden rounded-2xl border border-black/15 bg-[#EAE6DB] sm:h-[520px]">
               <div className="flex items-center justify-between border-b border-black/15 px-5 py-6">
                 <h2 className="text-lg font-bold">Extracted clauses</h2>
-                <span className="text-sm text-[#526174]">{pageClauses.length} shown</span>
+                <span className="text-sm text-[#526174]">{allClauses.length} shown</span>
               </div>
-              <div className="space-y-3 p-4">
-                {pageClauses.length === 0 ? (
-                  <div className="rounded-xl border border-dashed border-black/15 bg-[#F7F3EA] p-6 text-center text-sm text-[#67758A]">No extracted clauses are associated with page {currentPage}.</div>
-                ) : pageClauses.map((clause) => {
+              <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain p-4">
+                {allClauses.length === 0 ? (
+                  <div className="rounded-xl border border-dashed border-black/15 bg-[#F7F3EA] p-6 text-center text-sm text-[#67758A]">No extracted clauses are available for this document.</div>
+                ) : allClauses.map((clause) => {
                   const isExpanded = selectedClause?.id === clause.id;
                   return (
                     <article key={clause.id} className="overflow-hidden rounded-2xl border border-black/15 bg-[#F7F3EA]">
-                      <button type="button" onClick={() => { setSelectedClauseId(clause.id); setActiveTab("plain"); }} className="flex w-full items-center gap-3 px-4 py-3.5 text-left">
+                      <button type="button" onClick={() => selectClause(clause)} className="flex w-full items-center gap-3 px-4 py-3.5 text-left">
                         <span className="rounded-xl border border-black/15 bg-[#EAE6DB] px-2 py-1.5 font-mono text-xs font-bold text-[#0875D1]">{clause.clause_number}</span>
                         <span className="min-w-0 flex-1"><span className="block break-words font-bold">{clause.title}</span><span className="mt-0.5 block text-sm text-[#526174]">Page {clause.page}</span></span>
                         <span className={`shrink-0 rounded-full border px-2.5 py-1 text-xs font-semibold ${riskStyles[clause.risk_level]}`}>• {clause.risk_level === "medium" ? "Moderate" : clause.risk_level === "high" ? "High Risk" : "Safe"}</span>

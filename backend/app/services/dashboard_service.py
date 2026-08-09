@@ -89,15 +89,15 @@ class DashboardService:
 
             risk = risk.upper().strip()
 
-            if risk == "LOW RISK":
+            if risk in {"LOW RISK", "SAFE", "LOW"}:
 
                 safe += 1
 
-            elif risk == "MODERATE RISK":
+            elif risk in {"MODERATE RISK", "MEDIUM", "MODERATE"}:
 
                 moderate += 1
 
-            elif risk == "HIGH RISK":
+            elif risk in {"HIGH RISK", "HIGH"}:
 
                 high += 1
 
@@ -133,19 +133,19 @@ class DashboardService:
 
         monthly_data = defaultdict(
             lambda: {
-                "documents": 0,
+                "reports": 0,
                 "scores": []
             }
         )
 
-        for completed_at, risk_score in results:
+        for generated_at, risk_score in results:
 
-            if completed_at is None:
+            if generated_at is None:
                 continue
 
-            month_key = completed_at.strftime("%Y-%m")
+            month_key = generated_at.strftime("%Y-%m")
 
-            monthly_data[month_key]["documents"] += 1
+            monthly_data[month_key]["reports"] += 1
 
             if risk_score is not None:
 
@@ -176,8 +176,8 @@ class DashboardService:
 
                 "month": month,
 
-                "documents_analyzed":
-                    data["documents"],
+                "reports_generated":
+                    data["reports"],
 
                 "average_risk_score":
                     average_score

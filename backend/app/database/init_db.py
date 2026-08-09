@@ -47,3 +47,32 @@ def init_db():
             connection.execute(text(f"ALTER TABLE users ADD COLUMN IF NOT EXISTS {name} {definition}"))
         connection.execute(text("ALTER TABLE password_reset_tokens ADD COLUMN IF NOT EXISTS used BOOLEAN NOT NULL DEFAULT FALSE"))
         connection.execute(text("ALTER TABLE password_reset_tokens ADD COLUMN IF NOT EXISTS created_at TIMESTAMP"))
+        # Remove only incomplete job placeholders when a completed analysis for the
+        # same document already exists. Completed rows and actively running work stay.
+        connection.execute(text("""
+            DELETE FROM analysis_jobs
+            WHERE analysis_id IN (
+                SELECT incomplete.id
+                FROM document_analyses AS incomplete
+                WHERE incomplete.status <> 'completed'
+                  AND incomplete.overall_risk_score IS NULL
+                  AND incomplete.summary IS NULL
+                  AND EXISTS (
+                    SELECT 1 FROM document_analyses AS completed
+                    WHERE completed.document_id = incomplete.document_id
+                      AND completed.status = 'completed'
+                  )
+            )
+        """))
+        connection.execute(text("""
+            DELETE FROM document_analyses AS incomplete
+            WHERE incomplete.status <> 'completed'
+              AND incomplete.overall_risk_score IS NULL
+              AND incomplete.summary IS NULL
+              AND EXISTS (
+                SELECT 1
+                FROM document_analyses AS completed
+                WHERE completed.document_id = incomplete.document_id
+                  AND completed.status = 'completed'
+              )
+        """))

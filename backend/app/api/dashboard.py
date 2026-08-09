@@ -14,7 +14,8 @@ from app.services.dashboard_service import DashboardService
 from app.schemas.dashboard import (
     DashboardOverviewResponse,
     RiskDistributionResponse,
-    AnalysisHistoryResponse
+    AnalysisHistoryResponse,
+    DashboardPageResponse,
 )
 
 
@@ -25,6 +26,20 @@ router = APIRouter(
     tags=["Dashboard"]
 
 )
+
+
+@router.get("/", response_model=DashboardPageResponse)
+def get_dashboard_page(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Return all dashboard-only data in one authenticated request."""
+    service = DashboardService(db)
+    return {
+        "overview": service.get_overview(current_user.id),
+        "risk_distribution": service.get_risk_distribution(current_user.id),
+        "history": service.get_analysis_history(current_user.id),
+    }
 
 
 # ==========================================

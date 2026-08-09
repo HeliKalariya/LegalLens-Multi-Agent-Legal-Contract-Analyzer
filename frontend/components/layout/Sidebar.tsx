@@ -33,19 +33,9 @@ const menuItems = [
     icon: Upload,
   },
   {
-    title: "Reports",
-    href: "/reports",
-    icon: BarChart3,
-  },
-  {
     title: "AI Chat",
     href: "/ai-chat",
     icon: Bot,
-  },
-  {
-    title: "Admin",
-    href: "/admin",
-    icon: Shield,
   },
   {
     title: "Profile",
@@ -61,6 +51,7 @@ export default function Sidebar() {
 
   function logout() {
     localStorage.removeItem("access_token");
+    localStorage.removeItem("refresh_token");
     setIsOpen(false);
     router.push("/login");
   }

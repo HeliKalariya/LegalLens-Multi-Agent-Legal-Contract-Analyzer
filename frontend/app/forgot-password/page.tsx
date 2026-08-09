@@ -12,7 +12,7 @@ export default function ForgotPasswordPage() {
     <AuthLayout>
       <AuthHeader />
 
-      <div className="bg-[#F5F1E8] border border-gray-300 rounded-3xl shadow-md p-7">
+      <div className="bg-[#EAE6DB] border border-gray-300 rounded-3xl shadow-md p-7">
 
         {/* Heading */}
 
@@ -54,7 +54,7 @@ export default function ForgotPasswordPage() {
 
       </div>
 
-      <BackHome />
+      
     </AuthLayout>
   );
 }

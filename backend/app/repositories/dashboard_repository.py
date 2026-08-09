@@ -1,3 +1,4 @@
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.models.document import Document
@@ -103,11 +104,11 @@ class DashboardRepository:
 
         results = (
             self.db.query(
-                DocumentAnalysis.overall_risk_level
+                Clause.risk_level
             )
             .join(
                 Document,
-                Document.id == DocumentAnalysis.document_id
+                Document.id == Clause.document_id
             )
             .filter(
                 Document.user_id == user_id
@@ -125,19 +126,23 @@ class DashboardRepository:
 
        return (
             self.db.query(
-                DocumentAnalysis.completed_at,
+                func.coalesce(Report.generated_at, Report.created_at),
                 DocumentAnalysis.overall_risk_score
             )
             .join(
                 Document,
-                Document.id == DocumentAnalysis.document_id
+                Document.id == Report.document_id
+            )
+            .join(
+                DocumentAnalysis,
+                DocumentAnalysis.id == Report.analysis_id
             )
             .filter(
                 Document.user_id == user_id,
-                DocumentAnalysis.completed_at.isnot(None)
+                func.coalesce(Report.generated_at, Report.created_at).isnot(None)
             )
             .order_by(
-                DocumentAnalysis.completed_at.asc()
+                func.coalesce(Report.generated_at, Report.created_at).asc()
             )
             .all()
         )

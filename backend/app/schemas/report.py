@@ -55,6 +55,16 @@ class TopRisk(BaseModel):
     explanation: str
 
 
+class NegotiationTerm(BaseModel):
+    """A practical counter-proposal tied to a specific extracted clause."""
+
+    title: str
+    page: int
+    suggestion: str
+
+
 class AnalysisReport(BaseModel):
     summary: ReportSummary
     top_risks: list[TopRisk]
+    negotiation_terms: list[NegotiationTerm] = []
+    contract_summary: list[str] = []

@@ -3,6 +3,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { loginUser } from "@/services/auth";
 import Link from "next/link";
+import { toast } from "sonner";
 
 import { validateLogin } from "@/validations/loginValidation";
 import ErrorMessage from "@/components/auth/ErrorMessage";
@@ -34,8 +35,6 @@ const [errors, setErrors] = useState({
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
-  const [successMessage, setSuccessMessage] = useState("");
-  const [backendError, setBackendError] = useState("");
   const [loading, setLoading] = useState(false); 
 
 
@@ -46,9 +45,6 @@ const [errors, setErrors] = useState({
   !errors.password;
 
  const handleLogin = async () => {
-
-  setBackendError("");
-  setSuccessMessage("");
 
   // Run Validation
   const validationErrors = validateLogin(
@@ -74,26 +70,24 @@ const [errors, setErrors] = useState({
 
     const data = await loginUser(email, password);
 
-      setSuccessMessage("Login Successful!");
-
         localStorage.setItem(
           "access_token",
           data.access_token
         );
+        localStorage.setItem("refresh_token", data.refresh_token);
 
+        toast.success("Login successful!", { description: "Welcome back to LegalLens." });
         setTimeout(() => {
           router.push("/dashboard");
-        }, 1500);
+        }, 700);
 
   } catch (error) {
 
     console.error(error);
 
-    setBackendError(
-      error instanceof Error
-        ? error.message
-        : "Unable to connect to the server. Please try again."
-    );
+    toast.error("Login failed", {
+      description: error instanceof Error ? error.message : "Unable to connect to the server. Please try again.",
+    });
   }
   finally {
     setLoading(false);
@@ -186,20 +180,6 @@ const [errors, setErrors] = useState({
             }
           />
         </div>
-        {
-          successMessage && (
-            <div className="mb-3 rounded-md bg-green-100 border border-green-500 px-3 py-2 text-sm text-green-700">
-              {successMessage}
-            </div>
-          )
-        }
-        {
-            backendError && (
-              <div className="mb-3 rounded-md border border-red-500 bg-red-100 px-3 py-2 text-sm text-red-700">
-                {backendError}
-              </div>
-            )
-          }
         {/* Login Button */}
 
           <PrimaryButton

@@ -21,10 +21,18 @@ class RiskDistributionResponse(BaseModel):
 class AnalysisHistoryItem(BaseModel):
 
     month: str
-    documents_analyzed: int
+    reports_generated: int
     average_risk_score: float
 
 
 class AnalysisHistoryResponse(BaseModel):
 
+    history: List[AnalysisHistoryItem]
+
+
+class DashboardPageResponse(BaseModel):
+    """Single payload used by the dashboard cards and charts."""
+
+    overview: DashboardOverviewResponse
+    risk_distribution: RiskDistributionResponse
     history: List[AnalysisHistoryItem]

@@ -1,5 +1,10 @@
+import secrets
+from datetime import datetime, timedelta
+
 from sqlalchemy.orm import Session
 
+from app.config import settings
+from app.models.refresh_token import RefreshToken
 from app.models.user import User
 from app.repositories.user_repository import UserRepository
 from app.schemas.auth import RegisterRequest
@@ -19,6 +24,23 @@ class AuthService:
     def __init__(self, db: Session):
 
         self.repository = UserRepository(db)
+        self.db = db
+
+    def _create_refresh_token(self, user_id: int) -> str:
+        """Create a server-tracked token used to renew a browser session."""
+        token = secrets.token_urlsafe(48)
+        self.db.add(
+            RefreshToken(
+                user_id=user_id,
+                token=token,
+                expires_at=datetime.utcnow() + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS),
+            )
+        )
+        return token
+
+    @staticmethod
+    def _access_token_for(user: User) -> str:
+        return create_access_token({"sub": user.email, "role": user.role})
 
     def register_user(self, request: RegisterRequest):
 
@@ -54,16 +76,15 @@ class AuthService:
         if not password_matches:
             raise ValueError("Invalid email or password")
 
-        access_token = create_access_token(
-            {
-                "sub": user.email,
-                "role": user.role
-            }
-        )
+        access_token = self._access_token_for(user)
+        refresh_token = self._create_refresh_token(user.id)
+        self.db.commit()
 
         return {
 
             "access_token": access_token,
+
+            "refresh_token": refresh_token,
 
             "token_type": "Bearer",
 
@@ -79,6 +100,32 @@ class AuthService:
 
             }
 
+        }
+
+    def refresh_session(self, refresh_token: str):
+        """Rotate a valid refresh token and issue a new access token."""
+        stored_token = (
+            self.db.query(RefreshToken)
+            .filter(RefreshToken.token == refresh_token)
+            .first()
+        )
+
+        if not stored_token or stored_token.revoked or stored_token.expires_at <= datetime.utcnow():
+            raise ValueError("Your session has expired. Please log in again.")
+
+        user = self.repository.get_user_by_id(stored_token.user_id)
+        if not user or not user.is_active:
+            raise ValueError("Your session is no longer active. Please log in again.")
+
+        # Token rotation prevents an old browser token from being reused.
+        stored_token.revoked = True
+        next_refresh_token = self._create_refresh_token(user.id)
+        self.db.commit()
+
+        return {
+            "access_token": self._access_token_for(user),
+            "refresh_token": next_refresh_token,
+            "token_type": "Bearer",
         }
     async def forgot_password(
         self,

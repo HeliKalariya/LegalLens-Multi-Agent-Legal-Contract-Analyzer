@@ -20,6 +20,7 @@ export default function PrimaryButton({
         mt-3
         w-full
         rounded-lg
+        auth-primary
         bg-[#181211]
         py-2
         text-sm

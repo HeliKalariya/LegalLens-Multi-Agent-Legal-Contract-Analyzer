@@ -133,6 +133,51 @@ html[data-theme="dark"] .analysis-tab-active:hover {
   color: #000000 !important;
 }
 
+/* Auth submit buttons stay prominent against the dark card surface. */
+html[data-theme="dark"] .auth-primary:not(:disabled) {
+  background-color: #0877cb !important;
+  color: #ffffff !important;
+  box-shadow: 0 3px 10px rgba(8, 119, 203, 0.32);
+}
+
+html[data-theme="dark"] .auth-primary:not(:disabled):hover {
+  background-color: #1192ef !important;
+}
+
+html[data-theme="dark"] .auth-primary:disabled {
+  background-color: #3f3f46 !important;
+  color: #d4d4d8 !important;
+  border: 1px solid #52525b;
+}
+
+/* Keep Sonner's dismiss button inside the notification and away from its text. */
+[data-sonner-toast] {
+  position: relative !important;
+  padding-right: 3rem !important;
+}
+
+[data-sonner-toast] [data-close-button] {
+  position: absolute !important;
+  top: 0.55rem !important;
+  right: 0.55rem !important;
+  left: auto !important;
+  z-index: 1;
+  cursor: pointer;
+  pointer-events: auto !important;
+  display: grid !important;
+  width: 1.5rem !important;
+  height: 1.5rem !important;
+  place-items: center;
+  border-radius: 9999px !important;
+  transform: none !important;
+  transition: background-color 160ms ease, opacity 160ms ease !important;
+}
+
+[data-sonner-toast] [data-close-button]:hover,
+[data-sonner-toast] [data-close-button]:active {
+  transform: none !important;
+}
+
 html[data-theme="dark"] input,
 html[data-theme="dark"] textarea,
 html[data-theme="dark"] select {
@@ -158,4 +203,17 @@ html[data-theme="dark"] textarea::placeholder {
     filter: brightness(0.97);
     transform: translateY(-1px);
   }
+}
+
+/* Keep compact data-table labels, status chips, and risk badges on one line. */
+main table th,
+main table td {
+  white-space: nowrap !important;
+}
+
+/* Badges must not shrink their label onto separate lines on phone-sized tables. */
+main table td [class*="rounded-full"] {
+  display: inline-flex;
+  flex: none;
+  white-space: nowrap !important;
 }

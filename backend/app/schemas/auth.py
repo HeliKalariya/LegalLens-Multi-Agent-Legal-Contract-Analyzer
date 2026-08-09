@@ -25,6 +25,12 @@ class LoginRequest(BaseModel):
     password: str
 
 
+class RefreshTokenRequest(BaseModel):
+    """Refreshes an expired short-lived access token."""
+
+    refresh_token: str = Field(..., min_length=20, max_length=500)
+
+
 class ProfileUpdateRequest(BaseModel):
     """Editable fields for the signed-in user's profile."""
 

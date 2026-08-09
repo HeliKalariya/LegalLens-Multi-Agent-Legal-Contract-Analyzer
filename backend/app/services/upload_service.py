@@ -154,7 +154,7 @@ class UploadService:
         except OSError as error:
             logger.warning("Document %s was deleted from the database but its local file could not be removed: %s", document_id, error)
 
-    def analyze_pdf(self, user_id: int, document_id: str) -> dict:
+    def analyze_pdf(self, user_id: int, document_id: str, analysis_id: str | None = None) -> dict:
         """Generate and persist the English report in the owner's history."""
         document = self._require_document(user_id, document_id)
         file_path = self.get_pdf_path(user_id, document_id)
@@ -164,36 +164,46 @@ class UploadService:
         text, total_pages = self._read_document(file_path.read_bytes(), Path(document.stored_filename).suffix.lower())
         self._ensure_is_legal_document(text)
         clause_risks = extract_clause_risks(text)
+        # The LLM estimates a source page from extracted text. Clamp that estimate
+        # before persisting it so every clause always points to a real PDF page.
+        for clause_risk in clause_risks:
+            clause_risk.page = min(total_pages, max(1, clause_risk.page))
         report = build_report(document.original_filename, total_pages, clause_risks, language="en")
-        analysis = DocumentAnalysis(
-            document_id=document.id,
-            language="en",
-            overall_risk_score=report["summary"]["overall_risk_score"],
-            overall_risk_level=report["summary"]["overall_risk_label"],
-            summary=f"Completed analysis of {total_pages} page(s) with {len(clause_risks)} extracted clauses.",
-            important_points=[item["title"] for item in report.get("top_risks", [])],
-            legal_signals=self._legal_signals(text),
-            risk_topics=[item.risk_level for item in clause_risks],
-            raw_analysis=report,
-            model_name="groq",
-            prompt_version="multi-agent-v1",
-            status="completed",
-            started_at=datetime.utcnow(),
-            completed_at=datetime.utcnow(),
-        )
-        self.db.add(analysis)
-        self.db.flush()
+        # A background job creates a queued analysis first. Complete that same row
+        # instead of inserting a second completed record for the same document.
+        analysis = None
+        if analysis_id:
+            analysis = self.db.query(DocumentAnalysis).filter(
+                DocumentAnalysis.id == analysis_id,
+                DocumentAnalysis.document_id == document.id,
+            ).first()
+        if not analysis:
+            analysis = DocumentAnalysis(document_id=document.id, language="en")
+            self.db.add(analysis)
+            self.db.flush()
+            self.db.add(AnalysisJob(
+                document_id=document.id,
+                analysis_id=analysis.id,
+                current_step="completed",
+                progress=100,
+                status="completed",
+                started_at=datetime.utcnow(),
+                completed_at=datetime.utcnow(),
+            ))
 
-        job = AnalysisJob(
-            document_id=document.id,
-            analysis_id=analysis.id,
-            current_step="completed",
-            progress=100,
-            status="completed",
-            started_at=analysis.started_at,
-            completed_at=analysis.completed_at,
-        )
-        self.db.add(job)
+        analysis.language = "en"
+        analysis.overall_risk_score = report["summary"]["overall_risk_score"]
+        analysis.overall_risk_level = report["summary"]["overall_risk_label"]
+        analysis.summary = f"Completed analysis of {total_pages} page(s) with {len(clause_risks)} extracted clauses."
+        analysis.important_points = [item["title"] for item in report.get("top_risks", [])]
+        analysis.legal_signals = self._legal_signals(text)
+        analysis.risk_topics = [item.risk_level for item in clause_risks]
+        analysis.raw_analysis = report
+        analysis.model_name = "groq"
+        analysis.prompt_version = "multi-agent-v1"
+        analysis.status = "completed"
+        analysis.started_at = analysis.started_at or datetime.utcnow()
+        analysis.completed_at = datetime.utcnow()
 
         # Persist every extracted clause so the analysis workspace can filter by PDF page.
         for sort_order, risk in enumerate(clause_risks, start=1):
@@ -318,7 +328,7 @@ class UploadService:
 
             job.status, job.current_step, job.progress, job.started_at = "running", "specialist agents running", 15, datetime.utcnow()
             db.commit()
-            report = UploadService(db).analyze_pdf(document.user_id, document.id)
+            UploadService(db).analyze_pdf(document.user_id, document.id, job.analysis_id)
             job.status, job.current_step, job.progress, job.completed_at = "completed", "completed", 100, datetime.utcnow()
             db.commit()
             logger.info("Analysis job %s completed for document %s", job_id, document.id)
@@ -348,7 +358,7 @@ class UploadService:
             .first()
         )
         if saved_report and saved_report.report_data:
-            return saved_report.report_data
+            return self._with_negotiation_terms(document, saved_report.report_data)
         data = json.loads(document.analysis_data or "{}")
         if "clause_risks" not in data:
             return None
@@ -357,7 +367,56 @@ class UploadService:
             data.setdefault("reports", {})[language] = build_report(document.original_filename, data["total_pages"], clause_risks, language)
             document.analysis_data = json.dumps(data)
             self.db.commit()
-        return data["reports"][language]
+        return self._with_negotiation_terms(document, data["reports"][language])
+
+    def _with_negotiation_terms(self, document: Document, report_data: dict) -> dict:
+        """Attach every clause flagged negotiable to both old and new reports."""
+        result = dict(report_data)
+        try:
+            stored_analysis = json.loads(document.analysis_data or "{}")
+        except json.JSONDecodeError:
+            stored_analysis = {}
+        negotiable_risks = [
+            item for item in stored_analysis.get("clause_risks", [])
+            if isinstance(item, dict) and item.get("negotiable")
+        ]
+        terms = [
+            {
+                "title": str(item.get("title") or f"Clause on page {item.get('page', 1)}"),
+                "page": int(item.get("page") or 1),
+                "suggestion": str(item.get("negotiation_suggestion") or f"Ask for clearer and more balanced terms for {item.get('title') or 'this clause'}."),
+            }
+            for item in negotiable_risks
+        ]
+        # Older reports can have a saved negotiable count without the original
+        # boolean flags. Complete the list from persisted clause suggestions so the
+        # count card and the Negotiation terms section never disagree.
+        try:
+            expected_count = max(0, int(result.get("summary", {}).get("negotiable_count", 0)))
+        except (TypeError, ValueError):
+            expected_count = 0
+        if len(terms) < expected_count:
+            existing_terms = {(term["title"], term["page"]) for term in terms}
+            fallback_clauses = (
+                self.db.query(Clause)
+                .filter(Clause.document_id == document.id, Clause.negotiation_suggestion.isnot(None))
+                .order_by(Clause.risk_score.desc(), Clause.sort_order.asc())
+                .all()
+            )
+            for clause in fallback_clauses:
+                key = (clause.title, clause.page_number or 1)
+                if key in existing_terms:
+                    continue
+                terms.append({
+                    "title": clause.title,
+                    "page": clause.page_number or 1,
+                    "suggestion": clause.negotiation_suggestion or f"Ask for clearer and more balanced terms for {clause.title}.",
+                })
+                existing_terms.add(key)
+                if len(terms) >= expected_count:
+                    break
+        result["negotiation_terms"] = terms
+        return result
 
     def _get_document(self, user_id: int, document_id: str) -> Document | None:
         return self.db.query(Document).filter(Document.id == document_id, Document.user_id == user_id).first()
@@ -471,8 +530,7 @@ class UploadService:
             if len(cls._legal_signals(text)) < 2:
                 raise NotALegalDocumentError("This PDF does not contain enough legal-contract language and cannot be stored or analyzed here.")
 
-    @staticmethod
-    def _public_document(document: Document) -> dict:
+    def _public_document(self, document: Document) -> dict:
         try:
             legal_signals = json.loads(document.legal_signals or "[]")
         except json.JSONDecodeError:
@@ -483,8 +541,29 @@ class UploadService:
             analysis_data = {}
 
         clause_risks = analysis_data.get("clause_risks", [])
-        risk_levels = [item.get("risk_level") for item in clause_risks if isinstance(item, dict)]
-        risk_level = "high" if "high" in risk_levels else "medium" if "medium" in risk_levels else "safe" if risk_levels else "pending"
+        latest_analysis = (
+            self.db.query(DocumentAnalysis)
+            .filter(DocumentAnalysis.document_id == document.id, DocumentAnalysis.status == "completed")
+            .order_by(DocumentAnalysis.completed_at.desc())
+            .first()
+        )
+
+        # A document may contain one high-risk clause but still be Moderate overall.
+        # Use the persisted overall analysis result (an average risk score), not the
+        # most severe individual clause, for the Documents card badge.
+        if latest_analysis:
+            risk_level = self._document_risk_level(
+                latest_analysis.overall_risk_level,
+                latest_analysis.overall_risk_score,
+            )
+            risk_score = latest_analysis.overall_risk_score
+        else:
+            summary = analysis_data.get("reports", {}).get("en", {}).get("summary", {})
+            risk_level = self._document_risk_level(
+                summary.get("overall_risk_label"),
+                summary.get("overall_risk_score"),
+            ) if clause_risks else "pending"
+            risk_score = summary.get("overall_risk_score") if clause_risks else None
         document_types = {
             "agreement": "Agreement",
             "memorandum of understanding": "MOU",
@@ -506,7 +585,35 @@ class UploadService:
             "document_type": document_type,
             "clause_count": len(clause_risks),
             "risk_level": risk_level,
+            "risk_score": risk_score,
         }
+
+    @staticmethod
+    def _document_risk_level(label: object, score: object) -> str:
+        """Normalize stored report labels into the three UI badge values."""
+        # The score is the source of truth, so older labels cannot keep a 45-74
+        # score marked High after the thresholds change. Scores of 75+ are High.
+        try:
+            numeric_score = float(score)
+        except (TypeError, ValueError):
+            numeric_score = None
+
+        if numeric_score is not None:
+            if numeric_score >= 75:
+                return "high"
+            if numeric_score >= 45:
+                return "medium"
+            return "safe"
+
+        normalized_label = str(label or "").strip().lower()
+        if "high" in normalized_label:
+            return "high"
+        if "moderate" in normalized_label or "medium" in normalized_label:
+            return "medium"
+        if "low" in normalized_label or "safe" in normalized_label:
+            return "safe"
+
+        return "pending"
 
     @staticmethod
     def _public_job(job: AnalysisJob) -> dict:
