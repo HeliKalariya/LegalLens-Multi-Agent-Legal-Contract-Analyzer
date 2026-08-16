@@ -53,19 +53,25 @@ export default function DashboardPage() {
           authenticatedFetch(`${API_URL}/api/upload/`, { signal: controller.signal }),
         ]);
         if (dashboardResponse.ok) setDashboard(await dashboardResponse.json() as DashboardData);
-        if (documentsResponse.ok) {
-          const payload = await documentsResponse.json();
-          const fetchedDocuments = Array.isArray(payload.data) ? payload.data : [];
+      if (documentsResponse.ok) {
+        const payload = await documentsResponse.json();
+        const fetchedDocuments = Array.isArray(payload.data) ? payload.data : [];
           // Keep the dashboard compact by retaining only the latest five items.
           setDocuments(
             fetchedDocuments
               .sort((first: DocumentItem, second: DocumentItem) => new Date(second.uploaded_at).getTime() - new Date(first.uploaded_at).getTime())
-              .slice(0, 5),
-          );
-        }
-      } finally {
-        if (!controller.signal.aborted) setIsLoading(false);
+            .slice(0, 5),
+        );
       }
+    } catch (error) {
+      // React cancels the request during development remounts. That is expected
+      // and should not be reported as an unhandled dashboard error.
+      if (!controller.signal.aborted && !(error instanceof DOMException && error.name === "AbortError")) {
+        console.error("Could not load dashboard data.", error);
+      }
+    } finally {
+      if (!controller.signal.aborted) setIsLoading(false);
+    }
     }
     void loadDashboard();
     return () => controller.abort();
@@ -109,7 +115,7 @@ export default function DashboardPage() {
           <article className="rounded-2xl border border-black/15 bg-[#EAE6DB] p-5 sm:p-6"><h2 className="text-lg font-bold">Risk distribution</h2><p className="mt-1 text-sm text-[#67758A]">Across all analyzed clauses.</p><div className="mx-auto mt-6 grid h-44 w-44 place-items-center rounded-full" style={{ background: `conic-gradient(#36A269 0 ${safePercent}%, #F2B134 ${safePercent}% ${safePercent + mediumPercent}%, #DA3B36 ${safePercent + mediumPercent}% 100%)` }}><div className="grid h-28 w-28 place-items-center rounded-full bg-[#EAE6DB] text-center"><span className="text-2xl font-bold">{overview?.total_clauses ?? 0}</span><span className="text-xs text-[#67758A]">clauses</span></div></div><div className="mt-6 space-y-3 text-sm"><RiskRow label="Safe" color="bg-[#36A269]" value={safePercent} /><RiskRow label="Moderate" color="bg-[#F2B134]" value={mediumPercent} /><RiskRow label="High risk" color="bg-[#DA3B36]" value={highPercent} /></div></article>
         </section>
 
-        <section className="mt-6 overflow-hidden rounded-2xl border border-black/15 bg-[#EAE6DB]"><div className="flex items-center justify-between border-b border-black/10 px-5 py-5 sm:px-6"><h2 className="text-lg font-bold">Recent documents</h2><Link href="/documents" className="text-sm font-semibold text-[#0875D1] hover:underline">View all</Link></div><div className="overflow-x-auto"><table className="w-full min-w-[760px] text-left text-sm"><thead className="border-b border-black/10 text-xs uppercase tracking-wide text-[#526174]"><tr><th className="px-6 py-4 font-medium">File name</th><th className="px-4 py-4 font-medium">Upload date</th><th className="px-4 py-4 font-medium">Status</th><th className="px-4 py-4 font-medium">Risk score</th><th className="px-6 py-4 text-right font-medium">Report</th></tr></thead><tbody>{isLoading ? <tr><td colSpan={5} className="px-6 py-10 text-center text-[#67758A]">Loading documents…</td></tr> : documents.slice(0, 5).map((document) => <tr key={document.document_id} className="border-b border-black/10 last:border-0"><td className="px-6 py-4"><div className="flex max-w-[300px] items-center gap-3"><span className="rounded-xl border border-black/10 bg-[#F7F3EA] p-2 text-[#0875D1]"><FileText className="h-5 w-5" /></span><span className="truncate font-semibold" title={document.original_filename}>{document.original_filename}</span></div></td><td className="px-4 py-4 text-[#526174]">{new Date(document.uploaded_at).toLocaleDateString()}</td><td className="px-4 py-4"><span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${document.analysis_status === "analyzed" ? "bg-green-100 text-green-800" : "bg-blue-100 text-blue-800"}`}>{document.analysis_status === "analyzed" ? "• Analyzed" : "• Processing"}</span></td><td className="px-4 py-4">{document.risk_level && document.risk_level !== "pending" && typeof document.risk_score === "number" ? <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${riskStyles[document.risk_level]}`}>• {document.risk_level === "high" ? "High risk" : document.risk_level === "medium" ? "Moderate" : "Safe"} <span className="ml-1 text-[#526174]">{document.risk_score}/100</span></span> : <span className="text-[#67758A]">—</span>}</td><td className="px-6 py-4 text-right">{document.analysis_status === "analyzed" ? <Link href={`/reports/${document.document_id}`} className="font-semibold text-[#181211] hover:text-[#0875D1]">View ↗</Link> : <span className="text-[#67758A]">—</span>}</td></tr>)}{!isLoading && documents.length === 0 && <tr><td colSpan={5} className="px-6 py-10 text-center text-[#67758A]">No documents uploaded yet.</td></tr>}</tbody></table></div></section>
+        <section className="mt-6 overflow-hidden rounded-2xl border border-black/15 bg-[#EAE6DB]"><div className="flex items-center justify-between border-b border-black/10 px-5 py-5 sm:px-6"><h2 className="text-lg font-bold">Recent documents</h2><Link href="/documents" className="text-sm font-semibold text-[#0875D1] hover:underline">View all</Link></div><div className="overflow-x-auto"><table className="w-full min-w-[760px] text-left text-sm"><thead className="border-b border-black/10 text-xs uppercase tracking-wide text-[#526174]"><tr><th className="px-6 py-4 font-medium">File name</th><th className="px-4 py-4 font-medium">Upload date</th><th className="px-4 py-4 font-medium">Status</th><th className="px-4 py-4 font-medium">Risk score</th><th className="px-6 py-4 text-right font-medium">Report</th></tr></thead><tbody>{isLoading ? <tr><td colSpan={5} className="px-6 py-10 text-center text-[#67758A]">Loading documents…</td></tr> : documents.slice(0, 5).map((document) => <tr key={document.document_id} className="border-b border-black/10 last:border-0"><td className="px-6 py-4"><div className="flex max-w-[300px] items-center gap-3"><span className="rounded-xl border border-black/10 bg-[#F7F3EA] p-2 text-[#0875D1]"><FileText className="h-5 w-5" /></span><span className="truncate font-semibold" title={document.original_filename}>{document.original_filename}</span></div></td><td className="px-4 py-4 text-[#526174]">{new Date(document.uploaded_at).toLocaleDateString()}</td><td className="px-4 py-4"><span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${document.analysis_status === "analyzed" ? "bg-green-100 text-green-800" : "bg-blue-100 text-blue-800"}`}>{document.analysis_status === "analyzed" ? "• Analyzed" : "• Processing"}</span></td><td className="px-4 py-4">{document.risk_level && document.risk_level !== "pending" && typeof document.risk_score === "number" ? <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${riskStyles[document.risk_level]}`}>• {document.risk_level === "high" ? "High risk" : document.risk_level === "medium" ? "Moderate" : "Safe"} <span className="ml-1 font-bold text-current">{document.risk_score}/100</span></span> : <span className="text-[#67758A]">—</span>}</td><td className="px-6 py-4 text-right">{document.analysis_status === "analyzed" ? <Link href={`/reports/${document.document_id}`} className="font-semibold text-[#181211] hover:text-[#0875D1]">View ↗</Link> : <span className="text-[#67758A]">—</span>}</td></tr>)}{!isLoading && documents.length === 0 && <tr><td colSpan={5} className="px-6 py-10 text-center text-[#67758A]">No documents uploaded yet.</td></tr>}</tbody></table></div></section>
       </div>
     </DashboardLayout>
   );

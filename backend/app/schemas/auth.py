@@ -50,7 +50,8 @@ class ResetPasswordRequest(BaseModel):
 
     token: str = Field(
         ...,
-        description="JWT Reset Token"
+        min_length=20,
+        description="Single-use password reset token"
     )
 
     new_password: str = Field(

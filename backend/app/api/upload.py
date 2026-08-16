@@ -54,13 +54,16 @@ def delete_pdf(document_id: str, db: Session = Depends(get_db), current_user: Us
 
 
 @router.post("/{document_id}/analysis-jobs", status_code=status.HTTP_202_ACCEPTED)
-def create_analysis_job(document_id: str, background_tasks: BackgroundTasks, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+def create_analysis_job(document_id: str, background_tasks: BackgroundTasks, language: str = Query(default="en"), db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """Queue the AI analysis and return immediately so the UI can show progress."""
     try:
-        job = UploadService(db).create_analysis_job(current_user.id, document_id)
+        job = UploadService(db).create_analysis_job(current_user.id, document_id, language)
     except FileNotFoundError as error:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found.") from error
-    background_tasks.add_task(UploadService.process_analysis_job, job["job_id"])
+    except UnsupportedLanguageError as error:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)) from error
+    if job.pop("should_start", False):
+        background_tasks.add_task(UploadService.process_analysis_job, job["job_id"])
     return job
 
 
@@ -73,17 +76,17 @@ def get_analysis_job(document_id: str, job_id: str, db: Session = Depends(get_db
 
 
 @router.get("/{document_id}/analysis")
-def get_analysis(document_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    analysis = UploadService(db).get_analysis(current_user.id, document_id)
+def get_analysis(document_id: str, language: str = Query(default="en"), db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    analysis = UploadService(db).get_analysis(current_user.id, document_id, language)
     if not analysis:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Analysis is not ready yet.")
     return analysis
 
 
 @router.post("/{document_id}/analyze")
-def analyze_pdf(document_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+def analyze_pdf(document_id: str, language: str = Query(default="en"), db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     try:
-        return UploadService(db).analyze_pdf(current_user.id, document_id)
+        return UploadService(db).analyze_pdf(current_user.id, document_id, language=language)
     except FileNotFoundError as error:
         raise HTTPException(status_code=404, detail=str(error)) from error
     except (NotALegalDocumentError, ValueError) as error:
@@ -99,6 +102,18 @@ def get_report(document_id: str, language: str = Query(default="en"), db: Sessio
     if not report:
         raise HTTPException(status_code=404, detail="Report not found. Analyze the document first.")
     return report
+
+
+@router.get("/{document_id}/report/download")
+def download_report(document_id: str, language: str = Query(default="en"), db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Create and download a complete PDF copy of the saved report."""
+    try:
+        report_path = UploadService(db).export_report_pdf(current_user.id, document_id, language)
+    except UnsupportedLanguageError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    except FileNotFoundError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    return FileResponse(report_path, media_type="application/pdf", filename=f"LegalLens-{document_id}-{language}-report.pdf")
 
 
 @router.get("/{document_id}/preview")

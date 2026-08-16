@@ -1,3 +1,4 @@
+import hashlib
 import secrets
 from datetime import datetime, timedelta
 
@@ -5,17 +6,13 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.models.refresh_token import RefreshToken
+from app.models.token import PasswordResetToken
 from app.models.user import User
 from app.repositories.user_repository import UserRepository
 from app.schemas.auth import RegisterRequest
 from app.security.hashing import hash_password
 from app.security.hashing import verify_password
 from app.security.jwt import create_access_token
-
-from app.security.jwt import (
-    create_reset_token,
-    verify_reset_token
-)
 
 from app.services.email_service import send_reset_email
 
@@ -142,11 +139,25 @@ class AuthService:
                 "message": "If this email exists, a password reset link has been sent."
             }
 
-        reset_token = create_reset_token(user.email)
-
-        reset_link = (
-            f"http://localhost:3000/reset-password?token={reset_token}"
+        # Store only a token hash. The raw, single-use token exists only in
+        # the email link and cannot be recovered from the database.
+        raw_token = secrets.token_urlsafe(48)
+        token_hash = hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
+        self.db.query(PasswordResetToken).filter(
+            PasswordResetToken.user_id == user.id,
+            PasswordResetToken.used.is_(False),
+        ).update({PasswordResetToken.used: True}, synchronize_session=False)
+        self.db.add(
+            PasswordResetToken(
+                user_id=user.id,
+                token=token_hash,
+                expires_at=datetime.utcnow() + timedelta(minutes=15),
+                used=False,
+            )
         )
+        self.db.commit()
+
+        reset_link = f"{settings.FRONTEND_URL}/reset-password?token={raw_token}"
 
         await send_reset_email(
             email=user.email,
@@ -165,27 +176,30 @@ class AuthService:
         new_password: str
     ):
 
-        email = verify_reset_token(token)
+        token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+        reset_record = self.db.query(PasswordResetToken).filter(
+            PasswordResetToken.token == token_hash,
+            PasswordResetToken.used.is_(False),
+        ).first()
 
-        if email is None:
+        if not reset_record or reset_record.expires_at <= datetime.utcnow():
+            if reset_record and not reset_record.used:
+                reset_record.used = True
+                self.db.commit()
+            return {"success": False, "message": "Invalid or expired token."}
 
-            return {
-                "success": False,
-                "message": "Invalid or expired token."
-            }
-
-        user = self.repository.get_user_by_email(email)
+        user = self.repository.get_user_by_id(reset_record.user_id)
 
         if user is None:
-
-            return {
-                "success": False,
-                "message": "User not found."
-            }
+            return {"success": False, "message": "Invalid or expired token."}
 
         user.hashed_password = hash_password(new_password)
-
-        self.repository.db.commit()
+        reset_record.used = True
+        # Password resets invalidate existing browser sessions too.
+        self.db.query(RefreshToken).filter(RefreshToken.user_id == user.id).update(
+            {RefreshToken.revoked: True}, synchronize_session=False
+        )
+        self.db.commit()
 
         return {
             "success": True,

@@ -15,6 +15,7 @@ type Document = {
   clause_count?: number;
   risk_level?: "high" | "medium" | "safe" | "pending";
   analysis_status: string;
+  analysis_language?: string;
 };
 
 const riskStyles = {
@@ -105,6 +106,7 @@ export default function DocumentsPage() {
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {filteredDocuments.map((document) => {
               const riskLevel = document.risk_level ?? "pending";
+              const analysisLanguage = document.analysis_language ?? "en";
               return (
                 <article key={document.document_id} className="flex min-w-0 flex-col rounded-2xl border border-black/15 bg-[#EAE6DB] p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md sm:p-6">
                   <div className="flex items-start justify-between gap-3">
@@ -127,14 +129,14 @@ export default function DocumentsPage() {
 
                   <div className="mt-5 grid grid-cols-2 gap-2">
                     <Link
-                      href={`/analysis/${document.document_id}`}
+                      href={`/analysis/${document.document_id}?language=${encodeURIComponent(analysisLanguage)}`}
                       className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-[#0875D1] bg-[#0875D1] px-3 text-sm font-semibold text-white shadow-sm transition hover:bg-[#065FA8] hover:shadow-md"
                     >
                       <FileSearch2 className="h-4 w-4 text-white" /> Analysis
                     </Link>
                     {document.analysis_status === "analyzed" ? (
                       <Link
-                        href={`/reports/${document.document_id}`}
+                        href={`/reports/${document.document_id}?language=${encodeURIComponent(analysisLanguage)}`}
                         className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-[#181211] px-3 text-sm font-semibold text-white transition hover:bg-black"
                       >
                         <BarChart3 className="h-4 w-4" /> Report

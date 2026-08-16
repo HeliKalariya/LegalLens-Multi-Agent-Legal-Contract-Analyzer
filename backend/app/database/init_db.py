@@ -47,6 +47,40 @@ def init_db():
             connection.execute(text(f"ALTER TABLE users ADD COLUMN IF NOT EXISTS {name} {definition}"))
         connection.execute(text("ALTER TABLE password_reset_tokens ADD COLUMN IF NOT EXISTS used BOOLEAN NOT NULL DEFAULT FALSE"))
         connection.execute(text("ALTER TABLE password_reset_tokens ADD COLUMN IF NOT EXISTS created_at TIMESTAMP"))
+        # Keep exactly one analysis per document and selected language. Remove
+        # older duplicate rows (and their dependent data) before adding the
+        # database-level uniqueness guarantee for all future requests.
+        duplicate_analysis_ids = """
+            SELECT id FROM (
+                SELECT id,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY document_id, language
+                        ORDER BY
+                            CASE WHEN status = 'completed' THEN 0 ELSE 1 END,
+                            completed_at DESC NULLS LAST,
+                            id DESC
+                    ) AS row_number
+                FROM document_analyses
+            ) ranked
+            WHERE row_number > 1
+        """
+        connection.execute(text(f"DELETE FROM analysis_jobs WHERE analysis_id IN ({duplicate_analysis_ids})"))
+        connection.execute(text(f"DELETE FROM clauses WHERE analysis_id IN ({duplicate_analysis_ids})"))
+        connection.execute(text(f"DELETE FROM reports WHERE analysis_id IN ({duplicate_analysis_ids})"))
+        connection.execute(text(f"DELETE FROM document_analyses WHERE id IN ({duplicate_analysis_ids})"))
+        connection.execute(text("""
+            CREATE UNIQUE INDEX IF NOT EXISTS uq_document_analyses_document_language
+            ON document_analyses (document_id, language)
+        """))
+        # Older versions always labelled reports as English. Remove mismatched
+        # report rows so the correct language-specific report is rebuilt from
+        # the completed analysis on its next request.
+        connection.execute(text("""
+            DELETE FROM reports
+            USING document_analyses
+            WHERE reports.analysis_id = document_analyses.id
+              AND reports.language <> document_analyses.language
+        """))
         # Remove only incomplete job placeholders when a completed analysis for the
         # same document already exists. Completed rows and actively running work stay.
         connection.execute(text("""

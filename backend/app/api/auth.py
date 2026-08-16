@@ -20,13 +20,12 @@ from app.schemas.auth import LoginRequest
 from app.schemas.auth import RefreshTokenRequest
 from app.schemas.auth import ProfileUpdateRequest
 from app.services.auth_service import AuthService
+from app.services.email_service import EmailDeliveryError
 
 from app.security.oauth import get_current_user
 from app.models.user import User
 from app.config import settings
 from app.security.jwt import create_access_token
-
-from app.services.auth_service import AuthService
 
 from app.schemas.auth import (
     ForgotPasswordRequest,
@@ -249,9 +248,10 @@ async def forgot_password(
 
     service = AuthService(db)
 
-    return await service.forgot_password(
-        request.email
-    )
+    try:
+        return await service.forgot_password(request.email)
+    except EmailDeliveryError as error:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(error))
 @router.post(
     "/reset-password",
     response_model=MessageResponse,
