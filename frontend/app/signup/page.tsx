@@ -3,7 +3,8 @@
 
   import { useState} from "react";
   import { useRouter } from "next/navigation";
-  import { registerUser } from "@/services/auth";
+  import { registerUser, signInWithGoogle } from "@/services/auth";
+  import { toast } from "sonner";
 
   import { validateSignup } from "@/validations/signupValidation";
   import { getPasswordStrength } from "@/utils/passwordStrength";
@@ -16,7 +17,6 @@
   import PrimaryButton from "@/components/auth/PrimaryButton";
   import Divider from "@/components/auth/Divider";
   import GoogleButton from "@/components/auth/GoogleButton";
-  import BackHome from "@/components/auth/BackHome";
 
   export default function SignupPage() {
     
@@ -26,7 +26,6 @@
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [loading, setLoading] = useState(false);
-    const [backendError, setBackendError] = useState("");
     const [errors, setErrors] = useState({
       fullName: "",
       email: "",
@@ -47,8 +46,6 @@
     });
     
     const handleSignup = async () => {
-
-      setBackendError("");
 
       const validationErrors = validateSignup(
     fullName,
@@ -74,13 +71,13 @@
 
     try {
 
-      const data = await registerUser(
+      await registerUser(
         fullName,
         email,
         password
       );
 
-      alert("Registration Successful!");
+      toast.success("Verification code sent!", { description: "Enter the six-digit code sent to your email." });
 
       setErrors({
         fullName: "",
@@ -88,18 +85,17 @@
         password: "",
       });
 
-      router.push("/login");
+      setTimeout(() => router.push(`/verify-email?email=${encodeURIComponent(email)}`), 700);
 
     }catch (error) {
 
     console.error(error);
 
     const message = error instanceof Error ? error.message : "Could not create account.";
-    if (message === "Email already exists") {
+    if (message.includes("already registered")) {
       setErrors({ fullName: "", email: message, password: "" });
-    } else {
-      setBackendError(message);
     }
+    toast.error("Registration failed", { description: message });
     
   }
   finally {
@@ -113,24 +109,24 @@
       <AuthLayout>
         <AuthHeader />
 
-        <div className="bg-[#F5F1E8] border border-gray-300 rounded-xl shadow-md p-4">
+        <div className="rounded-2xl border border-black/15 bg-[#EAE6DB] p-6 shadow-lg shadow-black/5">
 
           {/* Heading */}
 
-          <h2 className="text-xl font-bold text-black">
-            Create Account
+          <h2 className="text-2xl font-bold tracking-tight text-[#181211]">
+            Create your account
           </h2>
 
-          <p className="mt-1 text-[11px] leading-4 text-gray-600">
-            Join Legal Lens and start analyzing legal documents smarter.
+          <p className="mt-1 text-sm text-[#526174]">
+            Get started free. No credit card required.
           </p>
 
-          <div className="space-y-2">
+          <div>
             {/* Full Name */}
             <AuthInput
-              label="Full Name"
+              label="Name"
               type="text"
-              placeholder="John Doe"
+              placeholder="Jane Doe"
               name="name"
               value={fullName}
               onChange={(e) => {
@@ -210,7 +206,7 @@
           </div>
           {/* Create Account Button */}
 
-          <div className="mt-3">
+          <div className="mt-5">
             <PrimaryButton
                 text={
                     loading
@@ -223,15 +219,9 @@
             />
           </div>
 
-          {backendError && (
-            <p className="mt-3 rounded-md border border-red-500 bg-red-100 px-3 py-2 text-sm text-red-700">
-              {backendError}
-            </p>
-          )}
-
           {/* Divider */}
 
-          <div className="my-3">
+          <div>
             <Divider />
           </div>
 
@@ -239,23 +229,22 @@
 
           <GoogleButton
             text="Sign up with Google"
+            onClick={signInWithGoogle}
           />
 
           {/* Login Link */}
 
-          <p className="mt-3 text-center text-xs text-gray-700">
+          <p className="mt-5 text-center text-sm text-[#526174]">
             Already have an account?{" "}
             <Link
               href="/login"
-              className="font-semibold text-black hover:underline"
+              className="font-semibold text-[#181211] hover:underline"
             >
-              Log In
+              Log in
             </Link>
           </p>
 
         </div>
-
-        <BackHome />
 
       </AuthLayout>
     );

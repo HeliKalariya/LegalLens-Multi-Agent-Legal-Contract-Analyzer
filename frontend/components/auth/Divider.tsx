@@ -7,13 +7,13 @@ export default function Divider({
 }: DividerProps) {
   return (
     <div className="my-3 flex items-center">
-      <div className="flex-1 border-t border-gray-300"></div>
+      <div className="flex-1 border-t border-black/15"></div>
 
-      <span className="mx-3 text-xs uppercase tracking-widest text-gray-500">
+      <span className="mx-2 text-[10px] uppercase tracking-wide text-[#526174]">
         {text}
       </span>
 
-      <div className="flex-1 border-t border-gray-300"></div>
+      <div className="flex-1 border-t border-black/15"></div>
     </div>
   );
 }

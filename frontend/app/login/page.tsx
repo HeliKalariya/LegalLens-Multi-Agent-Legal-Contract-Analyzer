@@ -1,9 +1,9 @@
 "use client";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { loginUser } from "@/services/auth";
-/* eslint-disable react/no-unescaped-entities */
+import { loginUser, signInWithGoogle } from "@/services/auth";
 import Link from "next/link";
+import { toast } from "sonner";
 
 import { validateLogin } from "@/validations/loginValidation";
 import ErrorMessage from "@/components/auth/ErrorMessage";
@@ -15,7 +15,6 @@ import PasswordInput from "@/components/auth/PasswordInput";
 import PrimaryButton from "@/components/auth/PrimaryButton";
 import Divider from "@/components/auth/Divider";
 import GoogleButton from "@/components/auth/GoogleButton";
-import BackHome from "@/components/auth/BackHome";
 
 export default function LoginPage() {
   
@@ -36,8 +35,6 @@ const [errors, setErrors] = useState({
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
-  const [successMessage, setSuccessMessage] = useState("");
-  const [backendError, setBackendError] = useState("");
   const [loading, setLoading] = useState(false); 
 
 
@@ -48,9 +45,6 @@ const [errors, setErrors] = useState({
   !errors.password;
 
  const handleLogin = async () => {
-
-  setBackendError("");
-  setSuccessMessage("");
 
   // Run Validation
   const validationErrors = validateLogin(
@@ -76,26 +70,24 @@ const [errors, setErrors] = useState({
 
     const data = await loginUser(email, password);
 
-      setSuccessMessage("Login Successful!");
-
         localStorage.setItem(
           "access_token",
           data.access_token
         );
+        localStorage.setItem("refresh_token", data.refresh_token);
 
+        toast.success("Login successful!", { description: "Welcome back to LegalLens." });
         setTimeout(() => {
-          router.push("/upload");
-        }, 1500);
+          router.push("/dashboard");
+        }, 700);
 
   } catch (error) {
 
     console.error(error);
 
-    setBackendError(
-      error instanceof Error
-        ? error.message
-        : "Unable to connect to the server. Please try again."
-    );
+    toast.error("Login failed", {
+      description: error instanceof Error ? error.message : "Unable to connect to the server. Please try again.",
+    });
   }
   finally {
     setLoading(false);
@@ -105,16 +97,16 @@ const [errors, setErrors] = useState({
     <AuthLayout>
       <AuthHeader />
 
-      <div className="rounded-3xl border-2 border-black/15 bg-[#F5F1E8] p-5 shadow-lg shadow-black/10 sm:p-6">
+      <div className="rounded-2xl border border-black/15 bg-[#EAE6DB] p-6 shadow-lg shadow-black/5">
 
         {/* Heading */}
 
-        <h2 className="text-xl font-bold text-black">
-          Welcome Back
+        <h2 className="text-2xl font-bold tracking-tight text-[#181211]">
+          Welcome back
         </h2>
 
-        <p className="mt-1 text-[11px] leading-4 text-gray-600">
-          Log in to continue analyzing your legal documents.
+        <p className="mt-1 text-sm text-[#526174]">
+          Log in to continue analyzing your contracts.
         </p>
 
         {/* Email */}
@@ -155,17 +147,6 @@ const [errors, setErrors] = useState({
 
         <div>
 
-          <div className="flex justify-end mt-2 mb-1">
-
-            <Link
-              href="/forgot-password"
-              className="text-sm text-gray-600 hover:text-black"
-            >
-              Forgot Password?
-            </Link>
-
-          </div>
-
           <PasswordInput
             label="Password"
             placeholder="Enter password"
@@ -189,6 +170,7 @@ const [errors, setErrors] = useState({
               );
 
             }}
+            labelAction={<Link href="/forgot-password" className="text-sm font-normal text-[#526174] transition hover:text-[#181211]">Forgot?</Link>}
           />
           <ErrorMessage
             message={
@@ -198,27 +180,11 @@ const [errors, setErrors] = useState({
             }
           />
         </div>
-        {
-          successMessage && (
-            <div className="mb-3 rounded-md bg-green-100 border border-green-500 px-3 py-2 text-sm text-green-700">
-              {successMessage}
-            </div>
-          )
-        }
-        {
-            backendError && (
-              <div className="mb-3 rounded-md border border-red-500 bg-red-100 px-3 py-2 text-sm text-red-700">
-                {backendError}
-              </div>
-            )
-          }
         {/* Login Button */}
 
           <PrimaryButton
               text={
-                loading
-                  ? "Logging in..."
-                  : "Login"
+                loading ? "Logging in..." : "Log in"
               }
               onClick={handleLogin}
               disabled={loading || !isFormValid}
@@ -230,23 +196,21 @@ const [errors, setErrors] = useState({
 
         {/* Google */}
 
-        <GoogleButton />
+        <GoogleButton onClick={signInWithGoogle} />
 
         {/* Signup */}
 
-        <p className="mt-3 text-center text-sm text-gray-700">
-          Don't have an account?{" "}
+        <p className="mt-5 text-center text-sm text-[#526174]">
+          New to LegalLens?{" "}
           <Link
             href="/signup"
-            className="font-semibold text-black hover:underline"
+            className="font-semibold text-[#181211] hover:underline"
           >
-            Sign Up
+            Sign up
           </Link>
         </p>
 
       </div>
-
-      <BackHome />
 
     </AuthLayout>
   );

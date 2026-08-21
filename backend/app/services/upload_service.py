@@ -15,7 +15,13 @@ from zipfile import BadZipFile, ZipFile
 
 from pypdf import PdfReader
 from reportlab.lib.pagesizes import A4
+from reportlab.lib import colors
+from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+from reportlab.lib.units import mm
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen import canvas
+from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -116,9 +122,44 @@ class UploadService:
     def save_pdf(self, user_id: int, filename: str, file_bytes: bytes) -> dict:
         return self.save_document(user_id, filename, file_bytes)
 
-    def list_documents(self, user_id: int) -> list[dict]:
-        documents = self.db.query(Document).filter(Document.user_id == user_id).order_by(Document.created_at.desc()).all()
-        return [self._public_document(document) for document in documents]
+    def list_documents(self, user_id: int, limit: int | None = None) -> list[dict]:
+        """Return a user's newest documents without one analysis query per row."""
+        document_query = (
+            self.db.query(Document)
+            .filter(Document.user_id == user_id)
+            .order_by(Document.created_at.desc())
+        )
+        if limit is not None:
+            document_query = document_query.limit(limit)
+        documents = document_query.all()
+        latest_analyses = self._latest_completed_analyses([document.id for document in documents])
+        return [
+            self._public_document(document, latest_analyses.get(document.id), analysis_loaded=True)
+            for document in documents
+        ]
+
+    def search_documents(self, user_id: int, query: str, limit: int = 6) -> list[dict]:
+        """Return the current user's newest filename/type matches for global search."""
+        term = query.strip()
+        if not term:
+            return []
+
+        pattern = f"%{term}%"
+        documents = (
+            self.db.query(Document)
+            .filter(
+                Document.user_id == user_id,
+                (Document.original_filename.ilike(pattern) | Document.document_type.ilike(pattern)),
+            )
+            .order_by(Document.created_at.desc())
+            .limit(limit)
+            .all()
+        )
+        latest_analyses = self._latest_completed_analyses([document.id for document in documents])
+        return [
+            self._public_document(document, latest_analyses.get(document.id), analysis_loaded=True)
+            for document in documents
+        ]
 
     def get_pdf_path(self, user_id: int, document_id: str) -> Path | None:
         document = self._get_document(user_id, document_id)
@@ -154,8 +195,8 @@ class UploadService:
         except OSError as error:
             logger.warning("Document %s was deleted from the database but its local file could not be removed: %s", document_id, error)
 
-    def analyze_pdf(self, user_id: int, document_id: str) -> dict:
-        """Generate and persist the English report in the owner's history."""
+    def analyze_pdf(self, user_id: int, document_id: str, analysis_id: str | None = None, language: str = "en") -> dict:
+        """Generate and persist one language-specific analysis and report for a document."""
         document = self._require_document(user_id, document_id)
         file_path = self.get_pdf_path(user_id, document_id)
         if not file_path:
@@ -163,37 +204,62 @@ class UploadService:
 
         text, total_pages = self._read_document(file_path.read_bytes(), Path(document.stored_filename).suffix.lower())
         self._ensure_is_legal_document(text)
-        clause_risks = extract_clause_risks(text)
-        report = build_report(document.original_filename, total_pages, clause_risks, language="en")
-        analysis = DocumentAnalysis(
-            document_id=document.id,
-            language="en",
-            overall_risk_score=report["summary"]["overall_risk_score"],
-            overall_risk_level=report["summary"]["overall_risk_label"],
-            summary=f"Completed analysis of {total_pages} page(s) with {len(clause_risks)} extracted clauses.",
-            important_points=[item["title"] for item in report.get("top_risks", [])],
-            legal_signals=self._legal_signals(text),
-            risk_topics=[item.risk_level for item in clause_risks],
-            raw_analysis=report,
-            model_name="groq",
-            prompt_version="multi-agent-v1",
-            status="completed",
-            started_at=datetime.utcnow(),
-            completed_at=datetime.utcnow(),
-        )
-        self.db.add(analysis)
-        self.db.flush()
+        clause_risks = extract_clause_risks(text, language=language)
+        # The LLM estimates a source page from extracted text. Clamp that estimate
+        # before persisting it so every clause always points to a real PDF page.
+        for clause_risk in clause_risks:
+            clause_risk.page = min(total_pages, max(1, clause_risk.page))
+        report = build_report(document.original_filename, total_pages, clause_risks, language=language)
+        # A background job creates a queued analysis first. Complete that same row
+        # instead of inserting a second completed record for the same document.
+        analysis = None
+        if analysis_id:
+            analysis = self.db.query(DocumentAnalysis).filter(
+                DocumentAnalysis.id == analysis_id,
+                DocumentAnalysis.document_id == document.id,
+            ).first()
+        if not analysis:
+            analysis = (
+                self.db.query(DocumentAnalysis)
+                .filter(DocumentAnalysis.document_id == document.id, DocumentAnalysis.language == language)
+                .first()
+            )
+        if not analysis:
+            analysis = DocumentAnalysis(document_id=document.id, language=language)
+            self.db.add(analysis)
+            self.db.flush()
+            self.db.add(AnalysisJob(
+                document_id=document.id,
+                analysis_id=analysis.id,
+                current_step="completed",
+                progress=100,
+                status="completed",
+                started_at=datetime.utcnow(),
+                completed_at=datetime.utcnow(),
+            ))
 
-        job = AnalysisJob(
-            document_id=document.id,
-            analysis_id=analysis.id,
-            current_step="completed",
-            progress=100,
-            status="completed",
-            started_at=analysis.started_at,
-            completed_at=analysis.completed_at,
-        )
-        self.db.add(job)
+        analysis.language = language
+        analysis.overall_risk_score = report["summary"]["overall_risk_score"]
+        analysis.overall_risk_level = report["summary"]["overall_risk_label"]
+        analysis.summary = f"Completed analysis of {total_pages} page(s) with {len(clause_risks)} extracted clauses."
+        analysis.important_points = [item["title"] for item in report.get("top_risks", [])]
+        analysis.legal_signals = self._legal_signals(text)
+        analysis.risk_topics = [item.risk_level for item in clause_risks]
+        analysis.raw_analysis = report
+        analysis.model_name = "groq"
+        analysis.prompt_version = "multi-agent-v1"
+        analysis.status = "completed"
+        analysis.started_at = analysis.started_at or datetime.utcnow()
+        analysis.completed_at = datetime.utcnow()
+
+        # Reusing an existing analysis language must replace its old detail rows,
+        # rather than adding a second copy of every clause/report.
+        self.db.query(Clause).filter(Clause.analysis_id == analysis.id).delete(synchronize_session=False)
+        self.db.query(Report).filter(
+            Report.document_id == document.id,
+            Report.analysis_id == analysis.id,
+            Report.language == language,
+        ).delete(synchronize_session=False)
 
         # Persist every extracted clause so the analysis workspace can filter by PDF page.
         for sort_order, risk in enumerate(clause_risks, start=1):
@@ -220,7 +286,7 @@ class UploadService:
         self.db.add(Report(
             document_id=document.id,
             analysis_id=analysis.id,
-            language="en",
+            language=language,
             title=f"Legal analysis: {document.original_filename}",
             summary=analysis.summary,
             important_points=analysis.important_points,
@@ -234,32 +300,47 @@ class UploadService:
         document.analysis_data = json.dumps({
             "total_pages": total_pages,
             "clause_risks": [item.model_dump() for item in clause_risks],
-            "reports": {"en": report},
+            "reports": {language: report},
         })
         document.analyzed_at = datetime.utcnow()
         self.db.commit()
         return report
 
-    def create_analysis_job(self, user_id: int, document_id: str) -> dict:
+    def create_analysis_job(self, user_id: int, document_id: str, language: str = "en") -> dict:
         """Create a visible queued job before any AI work begins."""
         document = self._require_document(user_id, document_id)
-        running_job = (
-            self.db.query(AnalysisJob)
-            .filter(AnalysisJob.document_id == document.id, AnalysisJob.status.in_(["queued", "running"]))
-            .order_by(AnalysisJob.started_at.desc())
+        if language not in SUPPORTED_LANGUAGES:
+            raise UnsupportedLanguageError(f"Language '{language}' is not supported.")
+        existing_analysis = (
+            self.db.query(DocumentAnalysis)
+            .filter(DocumentAnalysis.document_id == document.id, DocumentAnalysis.language == language)
             .first()
         )
-        if running_job:
-            return self._public_job(running_job)
-
-        analysis = DocumentAnalysis(document_id=document.id, language="en", status="queued")
-        self.db.add(analysis)
-        self.db.flush()
+        if existing_analysis:
+            existing_job = (
+                self.db.query(AnalysisJob)
+                .filter(AnalysisJob.analysis_id == existing_analysis.id)
+                .order_by(AnalysisJob.started_at.desc())
+                .first()
+            )
+            if existing_job and existing_analysis.status in {"queued", "running", "completed"}:
+                return {**self._public_job(existing_job), "should_start": False}
+            # Failed language-specific analyses may be retried without adding a
+            # duplicate document_analyses row.
+            analysis = existing_analysis
+            analysis.status = "queued"
+            analysis.error_message = None
+            analysis.started_at = None
+            analysis.completed_at = None
+        else:
+            analysis = DocumentAnalysis(document_id=document.id, language=language, status="queued")
+            self.db.add(analysis)
+            self.db.flush()
         job = AnalysisJob(document_id=document.id, analysis_id=analysis.id, current_step="queued", progress=0, status="queued")
         self.db.add(job)
         document.analysis_status = "analyzing"
         self.db.commit()
-        return self._public_job(job)
+        return {**self._public_job(job), "should_start": True}
 
     def get_analysis_job(self, user_id: int, document_id: str, job_id: str) -> dict:
         self._require_document(user_id, document_id)
@@ -268,12 +349,12 @@ class UploadService:
             raise FileNotFoundError("Analysis job not found.")
         return self._public_job(job)
 
-    def get_analysis(self, user_id: int, document_id: str) -> dict | None:
+    def get_analysis(self, user_id: int, document_id: str, language: str = "en") -> dict | None:
         """Return the completed analysis and all clauses for page-based review."""
         self._require_document(user_id, document_id)
         analysis = (
             self.db.query(DocumentAnalysis)
-            .filter(DocumentAnalysis.document_id == document_id, DocumentAnalysis.status == "completed")
+            .filter(DocumentAnalysis.document_id == document_id, DocumentAnalysis.language == language, DocumentAnalysis.status == "completed")
             .order_by(DocumentAnalysis.completed_at.desc())
             .first()
         )
@@ -288,6 +369,7 @@ class UploadService:
         return {
             "analysis_id": analysis.id,
             "summary": analysis.raw_analysis.get("summary", {}),
+            "contract_summary": analysis.raw_analysis.get("contract_summary", []),
             "clauses": [{
                 "id": clause.id,
                 "clause_number": clause.clause_number,
@@ -302,6 +384,79 @@ class UploadService:
             } for clause in clauses],
         }
 
+    def export_report_pdf(self, user_id: int, document_id: str, language: str = "en") -> Path:
+        """Build a complete downloadable PDF from the saved language-specific report."""
+        if language not in SUPPORTED_LANGUAGES:
+            raise UnsupportedLanguageError(f"Language '{language}' is not supported.")
+        document = self._require_document(user_id, document_id)
+        report = self.get_report(user_id, document_id, language)
+        if not report:
+            raise FileNotFoundError("Report not found. Analyze the document first.")
+
+        output_path = settings.REPORT_DIR / f"{document.id}_{language}_legal_report.pdf"
+        font_name = self._report_font_name()
+        styles = getSampleStyleSheet()
+        title_style = ParagraphStyle("LegalLensTitle", parent=styles["Title"], fontName=font_name, fontSize=20, leading=25, textColor=colors.HexColor("#181211"), spaceAfter=8)
+        heading_style = ParagraphStyle("LegalLensHeading", parent=styles["Heading2"], fontName=font_name, fontSize=14, leading=18, textColor=colors.HexColor("#0875D1"), spaceBefore=12, spaceAfter=6)
+        body_style = ParagraphStyle("LegalLensBody", parent=styles["BodyText"], fontName=font_name, fontSize=9.5, leading=14, textColor=colors.HexColor("#302923"), spaceAfter=6)
+        small_style = ParagraphStyle("LegalLensSmall", parent=body_style, fontSize=8, leading=10, textColor=colors.HexColor("#526174"))
+        story = [
+            Paragraph("LegalLens | Contract Analysis Report", title_style),
+            Paragraph(f"<b>Document:</b> {self._pdf_safe(document.original_filename)}", body_style),
+            Paragraph(f"<b>Language:</b> {SUPPORTED_LANGUAGES[language]} &nbsp;&nbsp; <b>Generated:</b> {datetime.utcnow().strftime('%d %b %Y, %H:%M UTC')}", small_style),
+            Spacer(1, 5 * mm),
+        ]
+        summary = report.get("summary", {})
+        score = int(summary.get("overall_risk_score", 0) or 0)
+        metrics = [["Overall risk", f"{score}/100"], ["High risk clauses", str(summary.get("high_risk_count", 0))], ["Moderate clauses", str(summary.get("medium_risk_count", 0))], ["Safe clauses", str(summary.get("safe_count", 0))], ["Negotiable clauses", str(summary.get("negotiable_count", 0))]]
+        table = Table(metrics, colWidths=[85 * mm, 75 * mm])
+        table.setStyle(TableStyle([("FONTNAME", (0, 0), (-1, -1), font_name), ("FONTSIZE", (0, 0), (-1, -1), 9), ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#EAE6DB")), ("GRID", (0, 0), (-1, -1), 0.35, colors.HexColor("#CFC8BA")), ("LEFTPADDING", (0, 0), (-1, -1), 8), ("RIGHTPADDING", (0, 0), (-1, -1), 8), ("TOPPADDING", (0, 0), (-1, -1), 6), ("BOTTOMPADDING", (0, 0), (-1, -1), 6)]))
+        story.extend([Paragraph("Executive summary", heading_style), table, Spacer(1, 3 * mm)])
+        for line in report.get("contract_summary", []):
+            story.append(Paragraph(self._pdf_safe(str(line)), body_style))
+        story.append(Paragraph("Top risks", heading_style))
+        for risk in report.get("top_risks", []):
+            title = self._pdf_safe(str(risk.get("title", "Clause")))
+            explanation = self._pdf_safe(str(risk.get("explanation", "")))
+            story.append(Paragraph(f"<b>{risk.get('rank', '')}. {title}</b> — {str(risk.get('risk_level', '')).title()} risk · Page {risk.get('page', 1)}", body_style))
+            story.append(Paragraph(explanation, body_style))
+        story.append(Paragraph("Negotiation terms", heading_style))
+        terms = report.get("negotiation_terms", [])
+        if terms:
+            for index, term in enumerate(terms, start=1):
+                story.append(Paragraph(f"<b>{index}. {self._pdf_safe(str(term.get('title', 'Clause')))}</b> · Page {term.get('page', 1)}", body_style))
+                story.append(Paragraph(self._pdf_safe(str(term.get("suggestion", ""))), body_style))
+        else:
+            story.append(Paragraph("No clauses were marked negotiable for this document.", body_style))
+        story.extend([Spacer(1, 4 * mm), Paragraph("AI-assisted legal document analysis. This report is for information only and is not legal advice.", small_style)])
+        pdf = SimpleDocTemplate(str(output_path), pagesize=A4, rightMargin=16 * mm, leftMargin=16 * mm, topMargin=16 * mm, bottomMargin=16 * mm, title="LegalLens Contract Analysis Report")
+        pdf.build(story)
+
+        stored_report = self.db.query(Report).filter(Report.document_id == document.id, Report.language == language, Report.status == "completed").order_by(Report.generated_at.desc()).first()
+        if stored_report:
+            stored_report.report_path = str(output_path)
+            stored_report.file_size = output_path.stat().st_size
+            stored_report.sha256 = hashlib.sha256(output_path.read_bytes()).hexdigest()
+            self.db.commit()
+        return output_path
+
+    @staticmethod
+    def _pdf_safe(value: str) -> str:
+        """Escape report text before inserting it into ReportLab Paragraph markup."""
+        return value.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+    @staticmethod
+    def _report_font_name() -> str:
+        """Use Windows' Indian-script font when available; otherwise use Helvetica."""
+        font_path = Path(r"C:\Windows\Fonts\Nirmala.ttc")
+        font_name = "LegalLensUnicode"
+        if font_path.exists() and font_name not in pdfmetrics.getRegisteredFontNames():
+            try:
+                pdfmetrics.registerFont(TTFont(font_name, str(font_path), subfontIndex=0))
+            except Exception:
+                logger.warning("Could not load Nirmala font for Unicode report export.", exc_info=True)
+        return font_name if font_name in pdfmetrics.getRegisteredFontNames() else "Helvetica"
+
     @staticmethod
     def process_analysis_job(job_id: str) -> None:
         """Background worker entry point; it owns its own database session."""
@@ -309,6 +464,11 @@ class UploadService:
         try:
             job = db.query(AnalysisJob).filter(AnalysisJob.id == job_id).first()
             if not job:
+                return
+            job_analysis = db.query(DocumentAnalysis).filter(DocumentAnalysis.id == job.analysis_id).first()
+            if not job_analysis:
+                job.status, job.error_message = "failed", "Analysis record not found."
+                db.commit()
                 return
             document = db.query(Document).filter(Document.id == job.document_id).first()
             if not document:
@@ -318,7 +478,7 @@ class UploadService:
 
             job.status, job.current_step, job.progress, job.started_at = "running", "specialist agents running", 15, datetime.utcnow()
             db.commit()
-            report = UploadService(db).analyze_pdf(document.user_id, document.id)
+            UploadService(db).analyze_pdf(document.user_id, document.id, job.analysis_id, job_analysis.language)
             job.status, job.current_step, job.progress, job.completed_at = "completed", "completed", 100, datetime.utcnow()
             db.commit()
             logger.info("Analysis job %s completed for document %s", job_id, document.id)
@@ -348,7 +508,30 @@ class UploadService:
             .first()
         )
         if saved_report and saved_report.report_data:
-            return saved_report.report_data
+            return self._with_negotiation_terms(document, saved_report.report_data)
+        # A report is a presentation of an already-completed analysis, not a
+        # second analysis run. Reuse its language-specific saved result.
+        completed_analysis = (
+            self.db.query(DocumentAnalysis)
+            .filter(DocumentAnalysis.document_id == document_id, DocumentAnalysis.language == language, DocumentAnalysis.status == "completed")
+            .order_by(DocumentAnalysis.completed_at.desc())
+            .first()
+        )
+        if completed_analysis and completed_analysis.raw_analysis:
+            report_data = completed_analysis.raw_analysis
+            self.db.add(Report(
+                document_id=document.id,
+                analysis_id=completed_analysis.id,
+                language=language,
+                title=f"Legal analysis: {document.original_filename}",
+                summary=completed_analysis.summary,
+                important_points=completed_analysis.important_points,
+                report_data=report_data,
+                status="completed",
+                generated_at=datetime.utcnow(),
+            ))
+            self.db.commit()
+            return self._with_negotiation_terms(document, report_data)
         data = json.loads(document.analysis_data or "{}")
         if "clause_risks" not in data:
             return None
@@ -356,8 +539,75 @@ class UploadService:
             clause_risks = [ClauseRisk(**item) for item in data["clause_risks"]]
             data.setdefault("reports", {})[language] = build_report(document.original_filename, data["total_pages"], clause_risks, language)
             document.analysis_data = json.dumps(data)
+            analysis = (
+                self.db.query(DocumentAnalysis)
+                .filter(DocumentAnalysis.document_id == document_id, DocumentAnalysis.language == language, DocumentAnalysis.status == "completed")
+                .order_by(DocumentAnalysis.completed_at.desc())
+                .first()
+            )
+            if analysis:
+                self.db.add(Report(
+                    document_id=document.id,
+                    analysis_id=analysis.id,
+                    language=language,
+                    title=f"Legal analysis: {document.original_filename}",
+                    summary=analysis.summary,
+                    important_points=analysis.important_points,
+                    report_data=data["reports"][language],
+                    status="completed",
+                    generated_at=datetime.utcnow(),
+                ))
             self.db.commit()
-        return data["reports"][language]
+        return self._with_negotiation_terms(document, data["reports"][language])
+
+    def _with_negotiation_terms(self, document: Document, report_data: dict) -> dict:
+        """Attach every clause flagged negotiable to both old and new reports."""
+        result = dict(report_data)
+        try:
+            stored_analysis = json.loads(document.analysis_data or "{}")
+        except json.JSONDecodeError:
+            stored_analysis = {}
+        negotiable_risks = [
+            item for item in stored_analysis.get("clause_risks", [])
+            if isinstance(item, dict) and item.get("negotiable")
+        ]
+        terms = [
+            {
+                "title": str(item.get("title") or f"Clause on page {item.get('page', 1)}"),
+                "page": int(item.get("page") or 1),
+                "suggestion": str(item.get("negotiation_suggestion") or f"Ask for clearer and more balanced terms for {item.get('title') or 'this clause'}."),
+            }
+            for item in negotiable_risks
+        ]
+        # Older reports can have a saved negotiable count without the original
+        # boolean flags. Complete the list from persisted clause suggestions so the
+        # count card and the Negotiation terms section never disagree.
+        try:
+            expected_count = max(0, int(result.get("summary", {}).get("negotiable_count", 0)))
+        except (TypeError, ValueError):
+            expected_count = 0
+        if len(terms) < expected_count:
+            existing_terms = {(term["title"], term["page"]) for term in terms}
+            fallback_clauses = (
+                self.db.query(Clause)
+                .filter(Clause.document_id == document.id, Clause.negotiation_suggestion.isnot(None))
+                .order_by(Clause.risk_score.desc(), Clause.sort_order.asc())
+                .all()
+            )
+            for clause in fallback_clauses:
+                key = (clause.title, clause.page_number or 1)
+                if key in existing_terms:
+                    continue
+                terms.append({
+                    "title": clause.title,
+                    "page": clause.page_number or 1,
+                    "suggestion": clause.negotiation_suggestion or f"Ask for clearer and more balanced terms for {clause.title}.",
+                })
+                existing_terms.add(key)
+                if len(terms) >= expected_count:
+                    break
+        result["negotiation_terms"] = terms
+        return result
 
     def _get_document(self, user_id: int, document_id: str) -> Document | None:
         return self.db.query(Document).filter(Document.id == document_id, Document.user_id == user_id).first()
@@ -471,8 +721,35 @@ class UploadService:
             if len(cls._legal_signals(text)) < 2:
                 raise NotALegalDocumentError("This PDF does not contain enough legal-contract language and cannot be stored or analyzed here.")
 
-    @staticmethod
-    def _public_document(document: Document) -> dict:
+    def _latest_completed_analyses(self, document_ids: list[str]) -> dict[str, DocumentAnalysis]:
+        """Load the newest completed analysis for every document in one PostgreSQL query."""
+        if not document_ids:
+            return {}
+
+        analyses = (
+            self.db.query(DocumentAnalysis)
+            .filter(
+                DocumentAnalysis.document_id.in_(document_ids),
+                DocumentAnalysis.status == "completed",
+            )
+            # PostgreSQL DISTINCT ON keeps only the first row per document.
+            .order_by(
+                DocumentAnalysis.document_id,
+                DocumentAnalysis.completed_at.desc(),
+                DocumentAnalysis.id.desc(),
+            )
+            .distinct(DocumentAnalysis.document_id)
+            .all()
+        )
+        return {analysis.document_id: analysis for analysis in analyses}
+
+    def _public_document(
+        self,
+        document: Document,
+        latest_analysis: DocumentAnalysis | None = None,
+        *,
+        analysis_loaded: bool = False,
+    ) -> dict:
         try:
             legal_signals = json.loads(document.legal_signals or "[]")
         except json.JSONDecodeError:
@@ -483,8 +760,30 @@ class UploadService:
             analysis_data = {}
 
         clause_risks = analysis_data.get("clause_risks", [])
-        risk_levels = [item.get("risk_level") for item in clause_risks if isinstance(item, dict)]
-        risk_level = "high" if "high" in risk_levels else "medium" if "medium" in risk_levels else "safe" if risk_levels else "pending"
+        if not analysis_loaded:
+            latest_analysis = (
+                self.db.query(DocumentAnalysis)
+                .filter(DocumentAnalysis.document_id == document.id, DocumentAnalysis.status == "completed")
+                .order_by(DocumentAnalysis.completed_at.desc())
+                .first()
+            )
+
+        # A document may contain one high-risk clause but still be Moderate overall.
+        # Use the persisted overall analysis result (an average risk score), not the
+        # most severe individual clause, for the Documents card badge.
+        if latest_analysis:
+            risk_level = self._document_risk_level(
+                latest_analysis.overall_risk_level,
+                latest_analysis.overall_risk_score,
+            )
+            risk_score = latest_analysis.overall_risk_score
+        else:
+            summary = analysis_data.get("reports", {}).get("en", {}).get("summary", {})
+            risk_level = self._document_risk_level(
+                summary.get("overall_risk_label"),
+                summary.get("overall_risk_score"),
+            ) if clause_risks else "pending"
+            risk_score = summary.get("overall_risk_score") if clause_risks else None
         document_types = {
             "agreement": "Agreement",
             "memorandum of understanding": "MOU",
@@ -503,10 +802,41 @@ class UploadService:
             "file_url": document.file_url,
             "uploaded_at": document.created_at.isoformat(),
             "analysis_status": document.analysis_status,
+            # The Documents page must open the same language-specific analysis
+            # that was completed most recently, rather than assuming English.
+            "analysis_language": latest_analysis.language if latest_analysis else "en",
             "document_type": document_type,
             "clause_count": len(clause_risks),
             "risk_level": risk_level,
+            "risk_score": risk_score,
         }
+
+    @staticmethod
+    def _document_risk_level(label: object, score: object) -> str:
+        """Normalize stored report labels into the three UI badge values."""
+        # The score is the source of truth, so older labels cannot keep a 45-74
+        # score marked High after the thresholds change. Scores of 75+ are High.
+        try:
+            numeric_score = float(score)
+        except (TypeError, ValueError):
+            numeric_score = None
+
+        if numeric_score is not None:
+            if numeric_score >= 75:
+                return "high"
+            if numeric_score >= 45:
+                return "medium"
+            return "safe"
+
+        normalized_label = str(label or "").strip().lower()
+        if "high" in normalized_label:
+            return "high"
+        if "moderate" in normalized_label or "medium" in normalized_label:
+            return "medium"
+        if "low" in normalized_label or "safe" in normalized_label:
+            return "safe"
+
+        return "pending"
 
     @staticmethod
     def _public_job(job: AnalysisJob) -> dict:

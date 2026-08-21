@@ -42,7 +42,7 @@ export default function UploadPage() {
     if (!uploadedDocumentId) return;
     setAnalysisError("");
     try {
-      const response = await authenticatedFetch(`${API_URL}/api/upload/${uploadedDocumentId}/analysis-jobs`, { method: "POST" });
+      const response = await authenticatedFetch(`${API_URL}/api/upload/${uploadedDocumentId}/analysis-jobs?language=${language}`, { method: "POST" });
       const job = await response.json();
       if (!response.ok) throw new Error(job.detail ?? "Could not start analysis.");
       setAnalysisJob(job);
@@ -60,12 +60,13 @@ export default function UploadPage() {
         window.setTimeout(() => void pollJob().catch((error) => {
           setAnalysisError(error instanceof Error ? error.message : "Analysis failed.");
           setAnalysisJob(null);
-        }), 1200);
+        // Polling less frequently reduces background API load while the AI job runs.
+        }), 3500);
       };
       window.setTimeout(() => void pollJob().catch((error) => {
         setAnalysisError(error instanceof Error ? error.message : "Analysis failed.");
         setAnalysisJob(null);
-      }), 700);
+      }), 1200);
     } catch (error) {
       setAnalysisError(error instanceof Error ? error.message : "Could not start analysis.");
       setAnalysisJob(null);

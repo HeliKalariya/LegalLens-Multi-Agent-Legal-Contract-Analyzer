@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Script from "next/script";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Toaster } from "sonner";
 import "./globals.css";
@@ -26,9 +27,23 @@ export default function RootLayout({
   return (
     <html
       lang="en"
+      data-theme="light"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
+        <Script id="apply-saved-theme" strategy="beforeInteractive">
+          {`(() => {
+            try {
+              const savedTheme = localStorage.getItem("theme");
+              const theme = savedTheme === "dark" ? "dark" : "light";
+              document.documentElement.dataset.theme = theme;
+              document.documentElement.style.colorScheme = theme;
+            } catch {
+              document.documentElement.dataset.theme = "light";
+              document.documentElement.style.colorScheme = "light";
+            }
+          })();`}
+        </Script>
         {children}
         <Toaster position="top-right" richColors closeButton />
       </body>

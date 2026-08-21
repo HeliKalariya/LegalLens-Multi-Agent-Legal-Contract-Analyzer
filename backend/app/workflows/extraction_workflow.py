@@ -6,12 +6,20 @@ from __future__ import annotations
 import logging
 
 from app.schemas.report import ClauseRisk
+from app.config import settings
 from app.services.llm_providers.groq_client import GroqClassificationError, generate_json
-from app.prompts.multi_agent_analysis_prompt import MULTI_AGENT_ANALYSIS_PROMPT
+from app.prompts.clause_prompt import CLAUSE_EXTRACTION_PROMPT
+from app.prompts.parent_analysis_prompt import PARENT_ANALYSIS_PROMPT
 
 logger = logging.getLogger(__name__)
 
-_MAX_CHARS = 15000
+# Keep the first pass within the free tier's TPM headroom. Specialist agents
+# later enrich the selected clauses, so they do not need the whole document.
+_MAX_CHARS = 6000
+
+_LANGUAGE_NAMES = {
+    "en": "English", "hi": "Hindi", "gu": "Gujarati", "es": "Spanish", "fr": "French",
+}
 
 _EXTRACTION_PROMPT = """You are a legal document risk-extraction engine. Read the contract text below and \
 identify every distinct clause a non-drafting party (tenant, employee, vendor, etc.) should care about \
@@ -39,9 +47,22 @@ Contract text:
 """
 
 
-def extract_clause_risks(text: str) -> list[ClauseRisk]:
+def extract_clause_risks(text: str, language: str = "en") -> list[ClauseRisk]:
+    """Extract clause data using the configured single- or multi-agent mode."""
     try:
-        result = generate_json(MULTI_AGENT_ANALYSIS_PROMPT.format(text=text[:_MAX_CHARS]), temperature=0.1)
+        prompt = CLAUSE_EXTRACTION_PROMPT
+        if settings.ANALYSIS_MODE == "single":
+            language_name = _LANGUAGE_NAMES.get(language, "English")
+            prompt = PARENT_ANALYSIS_PROMPT.format(language_name=language_name, text=text[:_MAX_CHARS])
+        else:
+            prompt = CLAUSE_EXTRACTION_PROMPT.format(text=text[:_MAX_CHARS])
+        result = generate_json(
+            prompt,
+            temperature=0.1,
+            # Keep the compact structural response comfortably below the provider's
+            # JSON-output limit; later specialist agents enrich these clauses.
+            max_completion_tokens=1800,
+        )
     except GroqClassificationError as error:
         logger.error("Clause risk extraction failed: %s", error)
         raise

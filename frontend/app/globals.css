@@ -12,17 +12,208 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
 html,body {
   margin: 0;
   padding: 0;
   background: #F7F3EB;
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+}
+
+/* Dashboard theme: light retains the LegalLens cream palette; dark uses black surfaces. */
+html[data-theme="light"] {
+  --background: #F7F3EB;
+  --foreground: #181211;
+  color-scheme: light;
+}
+
+html[data-theme="dark"] {
+  --background: #090909;
+  --foreground: #f5f5f5;
+  color-scheme: dark;
+}
+
+html[data-theme="dark"] body {
+  background: #090909;
+  color: #f5f5f5;
+}
+
+html[data-theme="dark"] [class*="bg-[#F5F1E9]"],
+html[data-theme="dark"] [class*="bg-[#F7F3EA]"],
+html[data-theme="dark"] [class*="bg-[#F1EDE3]"],
+html[data-theme="dark"] [class*="bg-[#F4EFE6]"],
+html[data-theme="dark"] [class*="bg-[#F5F1E8]"] {
+  background-color: #101010 !important;
+}
+
+html[data-theme="dark"] [class*="bg-[#EAE6DB]"],
+html[data-theme="dark"] [class*="bg-[#DDD8CF]"],
+html[data-theme="dark"] [class*="bg-[#DDD7CC]"],
+html[data-theme="dark"] [class*="bg-[#D5D5D5]"] {
+  background-color: #181818 !important;
+}
+
+html[data-theme="dark"] [class*="bg-white"],
+html[data-theme="dark"] [class*="bg-gray-50"],
+html[data-theme="dark"] [class*="bg-gray-100"] {
+  background-color: #161616 !important;
+}
+
+html[data-theme="dark"] [class*="text-[#181211]"],
+html[data-theme="dark"] [class*="text-black"],
+html[data-theme="dark"] [class*="text-gray-900"],
+html[data-theme="dark"] [class*="text-gray-950"] {
+  color: #f5f5f5 !important;
+}
+
+html[data-theme="dark"] [class*="text-[#526174]"],
+html[data-theme="dark"] [class*="text-[#67758A]"],
+html[data-theme="dark"] [class*="text-gray-400"],
+html[data-theme="dark"] [class*="text-gray-500"],
+html[data-theme="dark"] [class*="text-gray-600"],
+html[data-theme="dark"] [class*="text-gray-700"] {
+  color: #e5e7eb !important;
+}
+
+html[data-theme="dark"] [class*="border-black"],
+html[data-theme="dark"] [class*="border-gray"] {
+  border-color: #363636 !important;
+}
+
+html[data-theme="dark"] .theme-logo {
+  /* The supplied logo uses black lettering; render a high-contrast white mark on black. */
+  filter: brightness(0) invert(1) !important;
+}
+
+/* Sidebar links need an explicit override because their active state uses Tailwind's text-black utility. */
+html[data-theme="dark"] .theme-sidebar .sidebar-nav-link,
+html[data-theme="dark"] .theme-sidebar .sidebar-logout {
+  color: #f8fafc !important;
+}
+
+html[data-theme="dark"] .theme-sidebar .sidebar-nav-active {
+  background-color: #282828 !important;
+  color: #ffffff !important;
+}
+
+html[data-theme="light"] .theme-sidebar .sidebar-logout:hover {
+  background-color: #fee2e2 !important;
+  color: #b91c1c !important;
+}
+
+html[data-theme="dark"] .theme-sidebar .sidebar-logout:hover {
+  background-color: #421717 !important;
+  color: #fecaca !important;
+}
+
+html[data-theme="dark"] .analysis-tab:not(.analysis-tab-active):hover {
+  background-color: #303030 !important;
+  color: #ffffff !important;
+}
+
+/* Keep the selected analysis tab distinct from a tab that is merely hovered. */
+html[data-theme="light"] .analysis-tab-active {
+  background-color: #ffffff !important;
+  color: #181211 !important;
+  box-shadow: 0 1px 4px rgba(24, 18, 17, 0.18);
+}
+
+html[data-theme="light"] .analysis-tab-active:hover {
+  background-color: #f8fafc !important;
+}
+
+html[data-theme="dark"] .analysis-tab-active {
+  background-color: #f8fafc !important;
+  color: #090909 !important;
+  box-shadow: 0 1px 5px rgba(255, 255, 255, 0.16);
+}
+
+html[data-theme="dark"] .analysis-tab-active:hover {
+  background-color: #ffffff !important;
+  color: #000000 !important;
+}
+
+/* Auth submit buttons stay prominent against the dark card surface. */
+html[data-theme="dark"] .auth-primary:not(:disabled) {
+  background-color: #0877cb !important;
+  color: #ffffff !important;
+  box-shadow: 0 3px 10px rgba(8, 119, 203, 0.32);
+}
+
+html[data-theme="dark"] .auth-primary:not(:disabled):hover {
+  background-color: #1192ef !important;
+}
+
+html[data-theme="dark"] .auth-primary:disabled {
+  background-color: #3f3f46 !important;
+  color: #d4d4d8 !important;
+  border: 1px solid #52525b;
+}
+
+/* Keep Sonner's dismiss button inside the notification and away from its text. */
+[data-sonner-toast] {
+  position: relative !important;
+  padding-right: 3rem !important;
+}
+
+[data-sonner-toast] [data-close-button] {
+  position: absolute !important;
+  top: 0.55rem !important;
+  right: 0.55rem !important;
+  left: auto !important;
+  z-index: 1;
+  cursor: pointer;
+  pointer-events: auto !important;
+  display: grid !important;
+  width: 1.5rem !important;
+  height: 1.5rem !important;
+  place-items: center;
+  border-radius: 9999px !important;
+  transform: none !important;
+  transition: background-color 160ms ease, opacity 160ms ease !important;
+}
+
+[data-sonner-toast] [data-close-button]:hover,
+[data-sonner-toast] [data-close-button]:active {
+  transform: none !important;
+}
+
+html[data-theme="dark"] input,
+html[data-theme="dark"] textarea,
+html[data-theme="dark"] select {
+  color: #ffffff !important;
+  background-color: #181818 !important;
+}
+
+html[data-theme="dark"] input::placeholder,
+html[data-theme="dark"] textarea::placeholder {
+  color: #d1d5db !important;
+  opacity: 1;
+}
+
+/* Give every interactive control clear feedback in the light LegalLens theme. */
+@media (hover: hover) {
+  html[data-theme="light"] button:not(:disabled),
+  html[data-theme="light"] a[class] {
+    transition: transform 160ms ease, filter 160ms ease, box-shadow 160ms ease;
+  }
+
+  html[data-theme="light"] button:not(:disabled):hover,
+  html[data-theme="light"] a[class]:hover {
+    filter: brightness(0.97);
+    transform: translateY(-1px);
+  }
+}
+
+/* Keep compact data-table labels, status chips, and risk badges on one line. */
+main table th,
+main table td {
+  white-space: nowrap !important;
+}
+
+/* Badges must not shrink their label onto separate lines on phone-sized tables. */
+main table td [class*="rounded-full"] {
+  display: inline-flex;
+  flex: none;
+  white-space: nowrap !important;
 }

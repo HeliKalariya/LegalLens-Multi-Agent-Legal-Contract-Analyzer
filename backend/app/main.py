@@ -13,6 +13,10 @@ from app.database.init_db import init_db
 # Import API routers.
 from app.api.auth import router as auth_router
 from app.api.upload import router as upload_router
+from app.api.chat import router as chat_router
+
+from app.api.dashboard import router as dashboard_router
+
 
 
 PROFILE_UPLOAD_DIRECTORY = str(settings.UPLOAD_DIR / "profile")
@@ -37,7 +41,7 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan,
 )
-
+app.include_router(dashboard_router)
 
 app.add_middleware(
     CORSMiddleware,
@@ -57,6 +61,7 @@ app.add_middleware(
 # API routes
 app.include_router(auth_router)
 app.include_router(upload_router)
+app.include_router(chat_router)
 
 
 # Static uploaded files

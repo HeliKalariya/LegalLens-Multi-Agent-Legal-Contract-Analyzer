@@ -1,11 +1,24 @@
+"use client";
+
 import Navbar from "./Navbar";
 import Sidebar from "./Sidebar";
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 
 export default function DashboardLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const router = useRouter();
+
+  useEffect(() => {
+    // A dashboard route is only available when the browser has a saved session.
+    const accessToken = localStorage.getItem("access_token");
+    const refreshToken = localStorage.getItem("refresh_token");
+    if (!accessToken && !refreshToken) router.replace("/login");
+  }, [router]);
+
   return (
     <div className="flex min-h-screen bg-[#F5F1E9]">
       <Sidebar />

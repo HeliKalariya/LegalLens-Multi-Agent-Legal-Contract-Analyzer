@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import time
 
 import httpx
@@ -15,11 +16,49 @@ GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
 
 # Change model here if needed
-GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
-
+GROQ_MODEL = os.getenv("GROQ_MODEL", "groq/compound-mini")
 
 class GroqClassificationError(Exception):
     """Raised when a Groq API call fails."""
+
+
+def _seconds_from_hint(value: str | None) -> float | None:
+    """Parse Groq's numeric retry hints, including values such as ``10.2s``."""
+    if not value:
+        return None
+    match = re.search(r"(\d+(?:\.\d+)?)\s*s?", value, flags=re.IGNORECASE)
+    return float(match.group(1)) if match else None
+
+
+def _rate_limit_error(response: httpx.Response) -> tuple[GroqClassificationError, float | None]:
+    """Keep Groq's reset details so the UI can tell users when to retry."""
+    try:
+        payload = response.json()
+        provider_message = str(payload.get("error", {}).get("message") or "Rate limit exceeded.")
+    except (ValueError, AttributeError):
+        provider_message = "Rate limit exceeded."
+
+    retry_after_value = response.headers.get("retry-after")
+
+    reset_tokens = response.headers.get("x-ratelimit-reset-tokens")
+    reset_requests = response.headers.get("x-ratelimit-reset-requests")
+    message_waits = [
+        float(value)
+        for value in re.findall(r"try again in\s*(\d+(?:\.\d+)?)\s*(?:s|seconds?)", provider_message, re.IGNORECASE)
+    ]
+    wait_hints = [
+        _seconds_from_hint(retry_after_value),
+        _seconds_from_hint(reset_tokens),
+        _seconds_from_hint(reset_requests),
+        *message_waits,
+    ]
+    retry_after = max((value for value in wait_hints if value is not None), default=None)
+    reset_hint = retry_after_value or reset_tokens or reset_requests
+    retry_hint = f" Try again after {reset_hint}." if reset_hint else " Check your Groq Console Limits page for the reset time."
+    error = GroqClassificationError(
+        f"Groq rate limit reached for model '{GROQ_MODEL}'. {provider_message}{retry_hint}"
+    )
+    return error, retry_after
 
 
 def _call_groq(
@@ -28,6 +67,7 @@ def _call_groq(
     temperature: float = 0.2,
     json_mode: bool = False,
     timeout: float = 60,
+    max_completion_tokens: int = 2048,
 ):
 
     if not GROQ_API_KEY:
@@ -37,6 +77,7 @@ def _call_groq(
         "model": GROQ_MODEL,
         "messages": messages,
         "temperature": temperature,
+        "max_completion_tokens": max_completion_tokens,
     }
 
     if json_mode:
@@ -51,7 +92,7 @@ def _call_groq(
 
     last_error = None
 
-    for _ in range(2):
+    for attempt in range(2):
 
         try:
 
@@ -72,9 +113,15 @@ def _call_groq(
             ) from e
 
         if response.status_code == 429:
-            last_error = GroqClassificationError("Rate limit exceeded.")
-            time.sleep(2)
-            continue
+            last_error, retry_after = _rate_limit_error(response)
+            # Honor Groq's retry instruction for short limits. A longer reset is
+            # reported to the user instead of keeping a background worker stuck.
+            if attempt == 0 and retry_after is not None and 0 < retry_after <= 30:
+                # Add a small margin so the second request is not sent before
+                # Groq has actually restored the token budget.
+                time.sleep(retry_after + 0.5)
+                continue
+            break
 
         if response.status_code >= 400:
             raise GroqClassificationError(
@@ -90,7 +137,7 @@ def _call_groq(
             ) from e
 
     raise GroqClassificationError(
-        f"Groq request failed after retry.\n{last_error}"
+        f"Groq request could not be completed.\n{last_error}"
     )
 
 
@@ -101,6 +148,7 @@ def generate(
     json_mode: bool = False,
     temperature: float = 0.2,
     timeout: float = 60,
+    max_completion_tokens: int = 2048,
 ) -> str:
     """
     Generate plain text.
@@ -128,6 +176,7 @@ def generate(
         temperature=temperature,
         json_mode=json_mode,
         timeout=timeout,
+        max_completion_tokens=max_completion_tokens,
     )
 
     try:
@@ -144,6 +193,7 @@ def generate_json(
     *,
     system_instruction: str | None = None,
     temperature: float = 0.2,
+    max_completion_tokens: int = 2048,
 ):
     """
     Generate JSON.
@@ -154,6 +204,7 @@ def generate_json(
         system_instruction=system_instruction,
         json_mode=True,
         temperature=temperature,
+        max_completion_tokens=max_completion_tokens,
     )
 
     try:

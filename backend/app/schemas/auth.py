@@ -25,6 +25,12 @@ class LoginRequest(BaseModel):
     password: str
 
 
+class RefreshTokenRequest(BaseModel):
+    """Refreshes an expired short-lived access token."""
+
+    refresh_token: str = Field(..., min_length=20, max_length=500)
+
+
 class ProfileUpdateRequest(BaseModel):
     """Editable fields for the signed-in user's profile."""
 
@@ -40,11 +46,21 @@ class ForgotPasswordRequest(BaseModel):
     email: EmailStr
 
 
+class EmailVerificationRequest(BaseModel):
+    email: EmailStr
+    code: str = Field(..., min_length=6, max_length=6, pattern=r"^\d{6}$")
+
+
+class ResendVerificationRequest(BaseModel):
+    email: EmailStr
+
+
 class ResetPasswordRequest(BaseModel):
 
     token: str = Field(
         ...,
-        description="JWT Reset Token"
+        min_length=20,
+        description="Single-use password reset token"
     )
 
     new_password: str = Field(

@@ -1,13 +1,22 @@
+"use client";
+
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import {
-  ArrowRight,
+  BriefcaseBusiness,
   CheckCircle2,
   FileText,
+  Handshake,
+  House,
   Languages,
+  Landmark,
   MessageSquare,
+  Moon,
   ScanSearch,
   ShieldCheck,
   Sparkles,
+  Sun,
+  ScrollText,
   Upload,
 } from "lucide-react";
 
@@ -28,19 +37,50 @@ const steps = [
   ["05", "Download report", "Share a polished report with your team or counterparty."],
 ];
 
+const documentTypes = [
+  { icon: House, title: "Leases & rental agreements", text: "Security deposits, break-lease clauses, and what your landlord can and cannot do." },
+  { icon: BriefcaseBusiness, title: "Job offers & employment", text: "Non-competes, NDAs, severance, equity vesting, and at-will language." },
+  { icon: ScrollText, title: "Terms of service", text: "Understand what you are agreeing to when you accept online terms." },
+  { icon: Landmark, title: "Loans & financial agreements", text: "Interest rates, late fees, prepayment penalties, and missed-payment terms." },
+  { icon: FileText, title: "Service & membership contracts", text: "Subscriptions, memberships, phone plans, and cancellation conditions." },
+  { icon: Handshake, title: "Personal agreements", text: "Roommate contracts, freelance work, contractor quotes, and settlement offers." },
+];
+
 export default function Home() {
+  const [theme, setTheme] = useState<"light" | "dark">(() => {
+    if (typeof window === "undefined") return "light";
+    return localStorage.getItem("theme") === "dark" ? "dark" : "light";
+  });
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    document.documentElement.style.colorScheme = theme;
+  }, [theme]);
+
+  function toggleTheme() {
+    const nextTheme = theme === "light" ? "dark" : "light";
+    setTheme(nextTheme);
+    localStorage.setItem("theme", nextTheme);
+    document.documentElement.dataset.theme = nextTheme;
+    document.documentElement.style.colorScheme = nextTheme;
+  }
+
   return (
     <main className="min-h-screen bg-[#F7F3EA] text-[#181211]">
       <header className="sticky top-0 z-20 border-b border-black/10 bg-[#F7F3EA]/95 backdrop-blur">
         <nav className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-3 px-4 sm:h-20 sm:px-6">
           <Link href="/" className="block" aria-label="LegalLens home">
-            <img src="/legallens-logo-transparent.png" alt="LegalLens" className="h-11 w-32 object-contain sm:h-16 sm:w-56" />
+            <img src="/legallens-logo-transparent.png" alt="LegalLens" className="theme-logo h-11 w-32 object-contain sm:h-16 sm:w-56" />
           </Link>
           <div className="hidden items-center gap-10 text-sm font-medium text-gray-600 md:flex">
+            <a href="#document-types" className="hover:text-black">Documents</a>
             <a href="#features" className="hover:text-black">Features</a>
             <a href="#how-it-works" className="hover:text-black">How it works</a>
           </div>
-          <div className="shrink-0 text-xs font-semibold sm:text-sm">
+          <div className="flex shrink-0 items-center gap-2 text-xs font-semibold sm:gap-3 sm:text-sm">
+            <button type="button" onClick={toggleTheme} className="grid h-9 w-9 place-items-center rounded-lg border border-black/15 bg-white/50 text-[#181211] transition hover:bg-white sm:h-10 sm:w-10" aria-label={theme === "light" ? "Switch to dark mode" : "Switch to light mode"} title={theme === "light" ? "Dark mode" : "Light mode"}>
+              {theme === "light" ? <Moon size={18} /> : <Sun size={18} />}
+            </button>
             <Link href="/login" className="inline-flex rounded-lg border border-black/15 bg-white/50 px-3 py-2 hover:bg-white sm:px-4">Log in</Link>
           </div>
         </nav>
@@ -74,6 +114,25 @@ export default function Home() {
                 <div key={title} className="flex items-center justify-between rounded-2xl border border-black/15 bg-[#F1EDE3] px-5 py-5"><span className="font-semibold">{title}</span><span className={`rounded-full border px-3 py-1 text-sm ${color}`}>{risk}</span></div>
               ))}
             </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="document-types" className="border-y border-black/10 bg-[#F1EDE3] py-16 sm:py-24" aria-labelledby="document-types-heading">
+        <div className="mx-auto max-w-6xl px-4 sm:px-6">
+          <div className="text-center">
+            <p className="text-sm font-bold uppercase tracking-wider text-[#0877cb]">Supported documents</p>
+            <h2 id="document-types-heading" className="mt-3 text-3xl font-bold tracking-tight text-[#181211] sm:text-5xl">Documents we help you understand</h2>
+            <p className="mx-auto mt-4 max-w-2xl text-sm leading-6 text-[#67758A] sm:text-base">If someone is asking you to sign it, LegalLens can help you read it with confidence.</p>
+          </div>
+          <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {documentTypes.map(({ icon: Icon, title, text }) => (
+              <article key={title} className="rounded-2xl border border-black/15 bg-[#F7F3EA] p-6 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
+                <span className="grid h-11 w-11 place-items-center rounded-xl border border-[#0877cb]/20 bg-[#0877cb]/10 text-[#0877cb]"><Icon size={24} /></span>
+                <h3 className="mt-5 text-lg font-bold text-[#181211]">{title}</h3>
+                <p className="mt-2 text-sm leading-6 text-[#67758A]">{text}</p>
+              </article>
+            ))}
           </div>
         </div>
       </section>
