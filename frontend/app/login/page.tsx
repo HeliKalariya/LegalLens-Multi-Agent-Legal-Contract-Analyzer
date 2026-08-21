@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { loginUser } from "@/services/auth";
+import { loginUser, signInWithGoogle } from "@/services/auth";
 import Link from "next/link";
 import { toast } from "sonner";
 
@@ -196,7 +196,7 @@ const [errors, setErrors] = useState({
 
         {/* Google */}
 
-        <GoogleButton />
+        <GoogleButton onClick={signInWithGoogle} />
 
         {/* Signup */}
 

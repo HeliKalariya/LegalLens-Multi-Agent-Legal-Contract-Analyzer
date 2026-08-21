@@ -1,5 +1,3 @@
-from collections import defaultdict
-
 from app.repositories.dashboard_repository import DashboardRepository
 
 
@@ -31,26 +29,8 @@ class DashboardService:
             self.repository.get_reports_generated(user_id)
         )
 
-        risk_scores = (
-            self.repository.get_risk_scores(user_id)
-        )
-
-        scores = [
-            float(row[0])
-            for row in risk_scores
-            if row[0] is not None
-        ]
-
-        if scores:
-
-            average_risk_score = round(
-                sum(scores) / len(scores),
-                2
-            )
-
-        else:
-
-            average_risk_score = 0.0
+        average_risk_score = self.repository.get_average_risk_score(user_id)
+        average_risk_score = round(float(average_risk_score), 2) if average_risk_score is not None else 0.0
 
         return {
 
@@ -80,9 +60,7 @@ class DashboardService:
         moderate = 0
         high = 0
 
-        for row in results:
-
-            risk = row[0]
+        for risk, count in results:
 
             if not risk:
                 continue
@@ -91,15 +69,15 @@ class DashboardService:
 
             if risk in {"LOW RISK", "SAFE", "LOW"}:
 
-                safe += 1
+                safe += count
 
             elif risk in {"MODERATE RISK", "MEDIUM", "MODERATE"}:
 
-                moderate += 1
+                moderate += count
 
             elif risk in {"HIGH RISK", "HIGH"}:
 
-                high += 1
+                high += count
 
         total = safe + moderate + high
 
@@ -131,57 +109,12 @@ class DashboardService:
             self.repository.get_analysis_history(user_id)
         )
 
-        monthly_data = defaultdict(
-            lambda: {
-                "reports": 0,
-                "scores": []
+        return [
+            {
+                "month": month.strftime("%Y-%m"),
+                "reports_generated": int(report_count),
+                "average_risk_score": round(float(average_score), 2) if average_score is not None else 0.0,
             }
-        )
-
-        for generated_at, risk_score in results:
-
-            if generated_at is None:
-                continue
-
-            month_key = generated_at.strftime("%Y-%m")
-
-            monthly_data[month_key]["reports"] += 1
-
-            if risk_score is not None:
-
-                monthly_data[month_key]["scores"].append(
-                    float(risk_score)
-                )
-
-        history = []
-
-        for month in sorted(monthly_data.keys()):
-
-            data = monthly_data[month]
-
-            scores = data["scores"]
-
-            if scores:
-
-                average_score = round(
-                    sum(scores) / len(scores),
-                    2
-                )
-
-            else:
-
-                average_score = 0.0
-
-            history.append({
-
-                "month": month,
-
-                "reports_generated":
-                    data["reports"],
-
-                "average_risk_score":
-                    average_score
-
-            })
-
-        return history
+            for month, report_count, average_score in results
+            if month is not None
+        ]

@@ -122,9 +122,44 @@ class UploadService:
     def save_pdf(self, user_id: int, filename: str, file_bytes: bytes) -> dict:
         return self.save_document(user_id, filename, file_bytes)
 
-    def list_documents(self, user_id: int) -> list[dict]:
-        documents = self.db.query(Document).filter(Document.user_id == user_id).order_by(Document.created_at.desc()).all()
-        return [self._public_document(document) for document in documents]
+    def list_documents(self, user_id: int, limit: int | None = None) -> list[dict]:
+        """Return a user's newest documents without one analysis query per row."""
+        document_query = (
+            self.db.query(Document)
+            .filter(Document.user_id == user_id)
+            .order_by(Document.created_at.desc())
+        )
+        if limit is not None:
+            document_query = document_query.limit(limit)
+        documents = document_query.all()
+        latest_analyses = self._latest_completed_analyses([document.id for document in documents])
+        return [
+            self._public_document(document, latest_analyses.get(document.id), analysis_loaded=True)
+            for document in documents
+        ]
+
+    def search_documents(self, user_id: int, query: str, limit: int = 6) -> list[dict]:
+        """Return the current user's newest filename/type matches for global search."""
+        term = query.strip()
+        if not term:
+            return []
+
+        pattern = f"%{term}%"
+        documents = (
+            self.db.query(Document)
+            .filter(
+                Document.user_id == user_id,
+                (Document.original_filename.ilike(pattern) | Document.document_type.ilike(pattern)),
+            )
+            .order_by(Document.created_at.desc())
+            .limit(limit)
+            .all()
+        )
+        latest_analyses = self._latest_completed_analyses([document.id for document in documents])
+        return [
+            self._public_document(document, latest_analyses.get(document.id), analysis_loaded=True)
+            for document in documents
+        ]
 
     def get_pdf_path(self, user_id: int, document_id: str) -> Path | None:
         document = self._get_document(user_id, document_id)
@@ -686,7 +721,35 @@ class UploadService:
             if len(cls._legal_signals(text)) < 2:
                 raise NotALegalDocumentError("This PDF does not contain enough legal-contract language and cannot be stored or analyzed here.")
 
-    def _public_document(self, document: Document) -> dict:
+    def _latest_completed_analyses(self, document_ids: list[str]) -> dict[str, DocumentAnalysis]:
+        """Load the newest completed analysis for every document in one PostgreSQL query."""
+        if not document_ids:
+            return {}
+
+        analyses = (
+            self.db.query(DocumentAnalysis)
+            .filter(
+                DocumentAnalysis.document_id.in_(document_ids),
+                DocumentAnalysis.status == "completed",
+            )
+            # PostgreSQL DISTINCT ON keeps only the first row per document.
+            .order_by(
+                DocumentAnalysis.document_id,
+                DocumentAnalysis.completed_at.desc(),
+                DocumentAnalysis.id.desc(),
+            )
+            .distinct(DocumentAnalysis.document_id)
+            .all()
+        )
+        return {analysis.document_id: analysis for analysis in analyses}
+
+    def _public_document(
+        self,
+        document: Document,
+        latest_analysis: DocumentAnalysis | None = None,
+        *,
+        analysis_loaded: bool = False,
+    ) -> dict:
         try:
             legal_signals = json.loads(document.legal_signals or "[]")
         except json.JSONDecodeError:
@@ -697,12 +760,13 @@ class UploadService:
             analysis_data = {}
 
         clause_risks = analysis_data.get("clause_risks", [])
-        latest_analysis = (
-            self.db.query(DocumentAnalysis)
-            .filter(DocumentAnalysis.document_id == document.id, DocumentAnalysis.status == "completed")
-            .order_by(DocumentAnalysis.completed_at.desc())
-            .first()
-        )
+        if not analysis_loaded:
+            latest_analysis = (
+                self.db.query(DocumentAnalysis)
+                .filter(DocumentAnalysis.document_id == document.id, DocumentAnalysis.status == "completed")
+                .order_by(DocumentAnalysis.completed_at.desc())
+                .first()
+            )
 
         # A document may contain one high-risk clause but still be Moderate overall.
         # Use the persisted overall analysis result (an average risk score), not the

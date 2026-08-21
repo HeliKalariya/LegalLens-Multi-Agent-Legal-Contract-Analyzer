@@ -27,7 +27,8 @@ export default function RecentUploads({ refreshKey = 0, onOpenPdf, onDeleted }: 
       try {
         setIsLoading(true);
         setError("");
-        const response = await authenticatedFetch(`${API_URL}/api/upload/`, { signal: controller.signal });
+        // The upload page only displays recent history, so avoid fetching a large library.
+        const response = await authenticatedFetch(`${API_URL}/api/upload/?limit=10`, { signal: controller.signal });
         const result = await response.json();
         if (!response.ok) throw new Error(result.detail ?? "Could not load documents.");
         setDocuments(Array.isArray(result.data) ? result.data : []);

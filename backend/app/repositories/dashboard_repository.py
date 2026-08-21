@@ -1,4 +1,4 @@
-from sqlalchemy import func
+from sqlalchemy import func, literal_column
 from sqlalchemy.orm import Session
 
 from app.models.document import Document
@@ -79,12 +79,10 @@ class DashboardRepository:
     # RISK SCORES
     # -----------------------------------
 
-    def get_risk_scores(self, user_id: int):
+    def get_average_risk_score(self, user_id: int):
 
         return (
-            self.db.query(
-                DocumentAnalysis.overall_risk_score
-            )
+            self.db.query(func.avg(DocumentAnalysis.overall_risk_score))
             .join(
                 Document,
                 Document.id == DocumentAnalysis.document_id
@@ -93,7 +91,7 @@ class DashboardRepository:
                 Document.user_id == user_id,
                 DocumentAnalysis.overall_risk_score.isnot(None)
             )
-            .all()
+            .scalar()
         )
 
     # -----------------------------------
@@ -104,15 +102,15 @@ class DashboardRepository:
 
         results = (
             self.db.query(
-                Clause.risk_level
+                Clause.risk_level,
+                func.count(Clause.id),
             )
             .join(
                 Document,
                 Document.id == Clause.document_id
             )
-            .filter(
-                Document.user_id == user_id
-            )
+            .filter(Document.user_id == user_id)
+            .group_by(Clause.risk_level)
             .all()
         )
 
@@ -123,11 +121,16 @@ class DashboardRepository:
     # -----------------------------------
 
     def get_analysis_history(self, user_id: int):
+        # Keep the same literal expression in SELECT/GROUP BY/ORDER BY. PostgreSQL
+        # cannot prove that separately-bound "month" parameters are equivalent.
+        report_timestamp = func.coalesce(Report.generated_at, Report.created_at)
+        report_month = func.date_trunc(literal_column("'month'"), report_timestamp)
 
-       return (
+        return (
             self.db.query(
-                func.coalesce(Report.generated_at, Report.created_at),
-                DocumentAnalysis.overall_risk_score
+                report_month.label("month"),
+                func.count(Report.id).label("reports_generated"),
+                func.avg(DocumentAnalysis.overall_risk_score).label("average_risk_score"),
             )
             .join(
                 Document,
@@ -139,10 +142,9 @@ class DashboardRepository:
             )
             .filter(
                 Document.user_id == user_id,
-                func.coalesce(Report.generated_at, Report.created_at).isnot(None)
+                report_timestamp.isnot(None)
             )
-            .order_by(
-                func.coalesce(Report.generated_at, Report.created_at).asc()
-            )
+            .group_by(report_month)
+            .order_by(report_month.asc())
             .all()
         )

@@ -4,7 +4,7 @@ from app.database.database import engine
 from app.database.base import Base
 
 from app.models.user import User
-from app.models.token import PasswordResetToken
+from app.models.token import EmailVerificationToken, PasswordResetToken
 from app.models.document import Document
 from app.models.refresh_token import RefreshToken
 from app.models.document_analysis import DocumentAnalysis
@@ -38,6 +38,7 @@ def init_db():
         "profile_image": "VARCHAR(255)",
         "theme": "VARCHAR(30) NOT NULL DEFAULT 'system'",
         "notifications": "BOOLEAN NOT NULL DEFAULT TRUE",
+        "google_id": "VARCHAR(255)",
     }
 
     with engine.begin() as connection:
@@ -45,6 +46,7 @@ def init_db():
             connection.execute(text(f"ALTER TABLE documents ADD COLUMN IF NOT EXISTS {name} {definition}"))
         for name, definition in user_upgrades.items():
             connection.execute(text(f"ALTER TABLE users ADD COLUMN IF NOT EXISTS {name} {definition}"))
+        connection.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS uq_users_google_id ON users (google_id) WHERE google_id IS NOT NULL"))
         connection.execute(text("ALTER TABLE password_reset_tokens ADD COLUMN IF NOT EXISTS used BOOLEAN NOT NULL DEFAULT FALSE"))
         connection.execute(text("ALTER TABLE password_reset_tokens ADD COLUMN IF NOT EXISTS created_at TIMESTAMP"))
         # Keep exactly one analysis per document and selected language. Remove

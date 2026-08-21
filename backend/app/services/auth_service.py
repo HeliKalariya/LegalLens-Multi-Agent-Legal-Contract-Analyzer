@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.models.refresh_token import RefreshToken
-from app.models.token import PasswordResetToken
+from app.models.token import EmailVerificationToken, PasswordResetToken
 from app.models.user import User
 from app.repositories.user_repository import UserRepository
 from app.schemas.auth import RegisterRequest
@@ -14,7 +14,7 @@ from app.security.hashing import hash_password
 from app.security.hashing import verify_password
 from app.security.jwt import create_access_token
 
-from app.services.email_service import send_reset_email
+from app.services.email_service import send_reset_email, send_verification_email
 
 class AuthService:
 
@@ -43,7 +43,7 @@ class AuthService:
 
         if self.repository.email_exists(request.email):
 
-            raise ValueError("Email already exists")
+            raise ValueError("This email is already registered. Please log in or verify your email.")
 
         user = User(
 
@@ -55,7 +55,65 @@ class AuthService:
 
         )
 
-        return self.repository.create_user(user)
+        self.db.add(user)
+        self.db.flush()
+        verification_code = self._create_email_verification_code(user.id)
+        self.db.commit()
+        self.db.refresh(user)
+        return user, verification_code
+
+    def _create_email_verification_code(self, user_id: int) -> str:
+        """Invalidate earlier codes and issue a fresh six-digit code."""
+        self.db.query(EmailVerificationToken).filter(
+            EmailVerificationToken.user_id == user_id,
+            EmailVerificationToken.used.is_(False),
+        ).update({EmailVerificationToken.used: True}, synchronize_session=False)
+        code = f"{secrets.randbelow(1_000_000):06d}"
+        self.db.add(
+            EmailVerificationToken(
+                user_id=user_id,
+                code_hash=hashlib.sha256(code.encode("utf-8")).hexdigest(),
+                expires_at=datetime.utcnow() + timedelta(minutes=15),
+                used=False,
+            )
+        )
+        return code
+
+    async def send_email_verification(self, user: User, code: str) -> None:
+        await send_verification_email(user.email, user.full_name, code)
+
+    async def resend_email_verification(self, email: str) -> dict:
+        user = self.repository.get_user_by_email(email.strip().lower())
+        if not user:
+            return {"success": True, "message": "If an unverified account exists, a new code has been sent."}
+        if user.is_verified:
+            return {"success": False, "message": "This email is already verified. Please log in."}
+
+        code = self._create_email_verification_code(user.id)
+        self.db.commit()
+        await self.send_email_verification(user, code)
+        return {"success": True, "message": "A new verification code has been sent."}
+
+    def verify_email_code(self, email: str, code: str) -> dict:
+        user = self.repository.get_user_by_email(email.strip().lower())
+        if not user:
+            raise ValueError("Invalid verification code.")
+        if user.is_verified:
+            return {"success": True, "message": "Your email is already verified."}
+
+        code_hash = hashlib.sha256(code.encode("utf-8")).hexdigest()
+        record = self.db.query(EmailVerificationToken).filter(
+            EmailVerificationToken.user_id == user.id,
+            EmailVerificationToken.code_hash == code_hash,
+            EmailVerificationToken.used.is_(False),
+        ).order_by(EmailVerificationToken.id.desc()).first()
+        if not record or record.expires_at <= datetime.utcnow():
+            raise ValueError("This verification code is invalid or expired.")
+
+        record.used = True
+        user.is_verified = True
+        self.db.commit()
+        return {"success": True, "message": "Email verified successfully. You can now log in."}
     
     def login_user(self, email: str, password: str):
 
@@ -72,6 +130,9 @@ class AuthService:
 
         if not password_matches:
             raise ValueError("Invalid email or password")
+
+        if not user.is_verified:
+            raise ValueError("Please verify your email before logging in. We sent you a verification code.")
 
         access_token = self._access_token_for(user)
         refresh_token = self._create_refresh_token(user.id)
@@ -123,6 +184,49 @@ class AuthService:
             "access_token": self._access_token_for(user),
             "refresh_token": next_refresh_token,
             "token_type": "Bearer",
+        }
+
+    def login_with_google(self, *, google_id: str, email: str, full_name: str):
+        """Find or create the local account for a verified Google identity."""
+        normalized_email = email.strip().lower()
+        user = self.db.query(User).filter(User.google_id == google_id).first()
+
+        if user is None:
+            # Link an existing password account only when Google proves it owns
+            # the same email address. This prevents duplicate local accounts.
+            user = self.repository.get_user_by_email(normalized_email)
+            if user is not None:
+                user.google_id = google_id
+                user.is_verified = True
+            else:
+                # Google-authenticated users do not choose a local password.
+                # Store a random, unusable hash so the existing non-null schema
+                # remains compatible and password login is never enabled by it.
+                user = User(
+                    full_name=(full_name or normalized_email.split("@", 1)[0])[:100],
+                    email=normalized_email,
+                    google_id=google_id,
+                    hashed_password=hash_password(secrets.token_urlsafe(48)),
+                    is_verified=True,
+                )
+                self.db.add(user)
+
+        self.db.flush()
+        access_token = self._access_token_for(user)
+        refresh_token = self._create_refresh_token(user.id)
+        self.db.commit()
+        self.db.refresh(user)
+
+        return {
+            "access_token": access_token,
+            "refresh_token": refresh_token,
+            "token_type": "Bearer",
+            "user": {
+                "id": user.id,
+                "name": user.full_name,
+                "email": user.email,
+                "role": user.role,
+            },
         }
     async def forgot_password(
         self,

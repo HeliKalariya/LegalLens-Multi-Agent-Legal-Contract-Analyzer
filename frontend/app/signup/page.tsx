@@ -3,7 +3,7 @@
 
   import { useState} from "react";
   import { useRouter } from "next/navigation";
-  import { registerUser } from "@/services/auth";
+  import { registerUser, signInWithGoogle } from "@/services/auth";
   import { toast } from "sonner";
 
   import { validateSignup } from "@/validations/signupValidation";
@@ -77,7 +77,7 @@
         password
       );
 
-      toast.success("Registration successful!", { description: "Your account is ready. Please log in." });
+      toast.success("Verification code sent!", { description: "Enter the six-digit code sent to your email." });
 
       setErrors({
         fullName: "",
@@ -85,14 +85,14 @@
         password: "",
       });
 
-      setTimeout(() => router.push("/login"), 700);
+      setTimeout(() => router.push(`/verify-email?email=${encodeURIComponent(email)}`), 700);
 
     }catch (error) {
 
     console.error(error);
 
     const message = error instanceof Error ? error.message : "Could not create account.";
-    if (message === "Email already exists") {
+    if (message.includes("already registered")) {
       setErrors({ fullName: "", email: message, password: "" });
     }
     toast.error("Registration failed", { description: message });
@@ -229,6 +229,7 @@
 
           <GoogleButton
             text="Sign up with Google"
+            onClick={signInWithGoogle}
           />
 
           {/* Login Link */}

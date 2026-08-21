@@ -41,33 +41,34 @@ export default function DashboardPage() {
   const [dashboard, setDashboard] = useState<DashboardData | null>(null);
   const [documents, setDocuments] = useState<DocumentItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
 
   useEffect(() => {
     const controller = new AbortController();
     async function loadDashboard() {
       try {
+        setLoadError("");
         // The dashboard data and document list are intentionally fetched separately:
         // cards/charts come from dashboard, while the table is the user's documents.
         const [dashboardResponse, documentsResponse] = await Promise.all([
           authenticatedFetch(`${API_URL}/api/dashboard/`, { signal: controller.signal }),
-          authenticatedFetch(`${API_URL}/api/upload/`, { signal: controller.signal }),
+          // The table renders five rows; request only those rows from the server.
+          authenticatedFetch(`${API_URL}/api/upload/?limit=5`, { signal: controller.signal }),
         ]);
-        if (dashboardResponse.ok) setDashboard(await dashboardResponse.json() as DashboardData);
-      if (documentsResponse.ok) {
+        if (!dashboardResponse.ok) throw new Error("Could not load dashboard data.");
+        if (!documentsResponse.ok) throw new Error("Could not load recent documents.");
+
+        setDashboard(await dashboardResponse.json() as DashboardData);
         const payload = await documentsResponse.json();
         const fetchedDocuments = Array.isArray(payload.data) ? payload.data : [];
-          // Keep the dashboard compact by retaining only the latest five items.
-          setDocuments(
-            fetchedDocuments
-              .sort((first: DocumentItem, second: DocumentItem) => new Date(second.uploaded_at).getTime() - new Date(first.uploaded_at).getTime())
-            .slice(0, 5),
-        );
-      }
-    } catch (error) {
+        // Keep the dashboard compact by retaining only the latest five items.
+        setDocuments(fetchedDocuments);
+      } catch (error) {
       // React cancels the request during development remounts. That is expected
-      // and should not be reported as an unhandled dashboard error.
+      // and should not be reported as an unhandled dashboard error. A short
+      // FastAPI reload should show a recoverable message instead of an overlay.
       if (!controller.signal.aborted && !(error instanceof DOMException && error.name === "AbortError")) {
-        console.error("Could not load dashboard data.", error);
+        setLoadError("The server is restarting or unavailable. Please refresh in a moment.");
       }
     } finally {
       if (!controller.signal.aborted) setIsLoading(false);
@@ -102,6 +103,7 @@ export default function DashboardPage() {
           <div><h1 className="text-3xl font-bold tracking-tight sm:text-4xl">Dashboard</h1><p className="mt-2 text-sm text-[#67758A] sm:text-base">Welcome back. Here&apos;s what&apos;s happening in your contract library.</p></div>
           <Link href="/upload" className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-[#181211] px-5 py-3 text-sm font-semibold text-white shadow-sm hover:bg-black"><Upload className="h-4 w-4" /> Upload contract</Link>
         </header>
+        {loadError && <p className="mt-4 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-900">{loadError}</p>}
 
         <section className="mt-7 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <StatCard label="Documents uploaded" value={overview?.total_documents ?? 0} icon={FileText} trend="Your legal document library" positive />

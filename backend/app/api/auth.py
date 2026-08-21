@@ -1,14 +1,21 @@
+import secrets
 import uuid
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Literal
+from urllib.parse import urlencode
 
+import httpx
 from fastapi import APIRouter
 from fastapi import Depends
 from fastapi import File
 from fastapi import HTTPException
+from fastapi import Request
 from fastapi import status
 from fastapi import UploadFile
+from fastapi.responses import RedirectResponse
 from fastapi.security import OAuth2PasswordRequestForm
+from jose import JWTError, jwt
 from pydantic import BaseModel
 
 
@@ -19,6 +26,8 @@ from app.schemas.auth import RegisterRequest
 from app.schemas.auth import LoginRequest
 from app.schemas.auth import RefreshTokenRequest
 from app.schemas.auth import ProfileUpdateRequest
+from app.schemas.auth import EmailVerificationRequest
+from app.schemas.auth import ResendVerificationRequest
 from app.services.auth_service import AuthService
 from app.services.email_service import EmailDeliveryError
 
@@ -37,6 +46,39 @@ router = APIRouter(
     prefix="/api/auth",
     tags=["Authentication"]
 )
+
+GOOGLE_AUTHORIZATION_URL = "https://accounts.google.com/o/oauth2/v2/auth"
+GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
+GOOGLE_USERINFO_URL = "https://openidconnect.googleapis.com/v1/userinfo"
+
+
+def _google_frontend_redirect(values: dict[str, str]) -> RedirectResponse:
+    """Return OAuth results in a URL fragment so tokens are not sent to servers."""
+    return RedirectResponse(
+        url=f"{settings.FRONTEND_URL}/auth/google/callback#{urlencode(values)}",
+        status_code=status.HTTP_302_FOUND,
+    )
+
+
+def _google_state() -> str:
+    """Create a short-lived CSRF state value for a Google sign-in attempt."""
+    return jwt.encode(
+        {
+            "type": "google_oauth_state",
+            "nonce": secrets.token_urlsafe(24),
+            "exp": datetime.now(timezone.utc) + timedelta(minutes=10),
+        },
+        settings.SECRET_KEY,
+        algorithm=settings.ALGORITHM,
+    )
+
+
+def _valid_google_state(state: str) -> bool:
+    try:
+        payload = jwt.decode(state, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        return payload.get("type") == "google_oauth_state" and bool(payload.get("nonce"))
+    except JWTError:
+        return False
 
 
 class ThemeUpdateRequest(BaseModel):
@@ -63,7 +105,7 @@ def profile_payload(user: User) -> dict:
     "/register",
     status_code=status.HTTP_201_CREATED
 )
-def register(
+async def register(
 
     request: RegisterRequest,
 
@@ -75,13 +117,14 @@ def register(
 
     try:
 
-        user = service.register_user(request)
+        user, verification_code = service.register_user(request)
+        await service.send_email_verification(user, verification_code)
 
         return {
 
             "success": True,
 
-            "message": "Registration successful",
+            "message": "Registration successful. Check your email for the verification code.",
 
             "user": {
 
@@ -104,6 +147,8 @@ def register(
             detail=str(e)
 
         )
+    except EmailDeliveryError as error:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(error))
 
 @router.post("/login")
 def login(
@@ -134,6 +179,24 @@ def login(
         )
 
 
+@router.post("/verify-email", response_model=MessageResponse)
+def verify_email(request: EmailVerificationRequest, db: Session = Depends(get_db)):
+    """Verify a registration code and activate password login for the account."""
+    try:
+        return AuthService(db).verify_email_code(str(request.email), request.code)
+    except ValueError as error:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error))
+
+
+@router.post("/resend-verification", response_model=MessageResponse)
+async def resend_verification(request: ResendVerificationRequest, db: Session = Depends(get_db)):
+    """Issue and email a replacement code for an unverified account."""
+    try:
+        return await AuthService(db).resend_email_verification(str(request.email))
+    except EmailDeliveryError as error:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(error))
+
+
 @router.post("/refresh")
 def refresh_access_token(
     request: RefreshTokenRequest,
@@ -144,6 +207,93 @@ def refresh_access_token(
         return AuthService(db).refresh_session(request.refresh_token)
     except ValueError as error:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(error))
+
+
+@router.get("/google/login")
+def google_login():
+    """Redirect the browser to Google's consent page for a secure OAuth login."""
+    if not settings.GOOGLE_CLIENT_ID or not settings.GOOGLE_CLIENT_SECRET:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Google sign-in is not configured. Add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET to backend/.env.",
+        )
+
+    state = _google_state()
+    query = urlencode(
+        {
+            "client_id": settings.GOOGLE_CLIENT_ID,
+            "redirect_uri": settings.GOOGLE_REDIRECT_URI,
+            "response_type": "code",
+            "scope": "openid email profile",
+            "state": state,
+            "prompt": "select_account",
+        }
+    )
+    response = RedirectResponse(f"{GOOGLE_AUTHORIZATION_URL}?{query}", status_code=status.HTTP_302_FOUND)
+    # Bind the signed state value to this browser to prevent login-CSRF.
+    response.set_cookie("google_oauth_state", state, max_age=600, httponly=True, samesite="lax")
+    return response
+
+
+@router.get("/google/callback")
+async def google_callback(
+    request: Request,
+    code: str | None = None,
+    state: str | None = None,
+    error: str | None = None,
+    db: Session = Depends(get_db),
+):
+    """Exchange Google authorization code, persist the profile, then issue app tokens."""
+    if error:
+        return _google_frontend_redirect({"error": "Google sign-in was cancelled or denied."})
+    if not code or not state or state != request.cookies.get("google_oauth_state") or not _valid_google_state(state):
+        return _google_frontend_redirect({"error": "Google sign-in could not be verified. Please try again."})
+
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            token_response = await client.post(
+                GOOGLE_TOKEN_URL,
+                data={
+                    "code": code,
+                    "client_id": settings.GOOGLE_CLIENT_ID,
+                    "client_secret": settings.GOOGLE_CLIENT_SECRET,
+                    "redirect_uri": settings.GOOGLE_REDIRECT_URI,
+                    "grant_type": "authorization_code",
+                },
+            )
+            token_response.raise_for_status()
+            google_access_token = token_response.json().get("access_token")
+            if not google_access_token:
+                raise ValueError("Google did not return an access token.")
+
+            profile_response = await client.get(
+                GOOGLE_USERINFO_URL,
+                headers={"Authorization": f"Bearer {google_access_token}"},
+            )
+            profile_response.raise_for_status()
+            profile = profile_response.json()
+
+        google_id = str(profile.get("sub") or "")
+        email = str(profile.get("email") or "")
+        if not google_id or not email or profile.get("email_verified") is not True:
+            raise ValueError("Google did not provide a verified email address.")
+
+        result = AuthService(db).login_with_google(
+            google_id=google_id,
+            email=email,
+            full_name=str(profile.get("name") or ""),
+        )
+        response = _google_frontend_redirect(
+            {
+                "access_token": result["access_token"],
+                "refresh_token": result["refresh_token"],
+            }
+        )
+        response.delete_cookie("google_oauth_state")
+        return response
+    except (httpx.HTTPError, ValueError) as exc:
+        return _google_frontend_redirect({"error": f"Google sign-in failed: {exc}"})
+
 @router.get("/me")
 def me(
 

@@ -60,7 +60,8 @@ export default function UploadPage() {
         window.setTimeout(() => void pollJob().catch((error) => {
           setAnalysisError(error instanceof Error ? error.message : "Analysis failed.");
           setAnalysisJob(null);
-        }), 2500);
+        // Polling less frequently reduces background API load while the AI job runs.
+        }), 3500);
       };
       window.setTimeout(() => void pollJob().catch((error) => {
         setAnalysisError(error instanceof Error ? error.message : "Analysis failed.");

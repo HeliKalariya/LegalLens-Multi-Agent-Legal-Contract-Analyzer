@@ -76,6 +76,31 @@ export async function registerUser(
     return data;
 }
 
+/** Starts the browser-based Google OAuth flow handled by the FastAPI backend. */
+export function signInWithGoogle() {
+    window.location.assign(`${API_URL}/api/auth/google/login`);
+}
+
+/** Confirm the six-digit code sent after registration. */
+export async function verifyEmail(email: string, code: string) {
+    const response = await fetch(`${API_URL}/api/auth/verify-email`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, code }),
+    });
+    return readApiResponse(response);
+}
+
+/** Send a fresh registration verification code. */
+export async function resendVerificationEmail(email: string) {
+    const response = await fetchWithTimeout(`${API_URL}/api/auth/resend-verification`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+    });
+    return readApiResponse(response);
+}
+
 async function readApiResponse(response: Response) {
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {

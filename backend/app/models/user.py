@@ -13,6 +13,10 @@ class User(Base):
 
     email = Column(String(255), unique=True, index=True, nullable=False)
 
+    # Google provides a stable subject identifier. Keeping it lets us identify
+    # the same Google account even if its display name changes.
+    google_id = Column(String(255), unique=True, index=True, nullable=True)
+
     hashed_password = Column(String(255), nullable=False)
 
     is_active = Column(Boolean, default=True)

@@ -1,12 +1,25 @@
 "use client";
 
-import { Moon, Search, Sun } from "lucide-react";
+import Link from "next/link";
+import { FileText, LoaderCircle, Moon, Search, Sun } from "lucide-react";
 import { useEffect, useState } from "react";
 import { API_URL, authenticatedFetch } from "@/lib/api";
+
+type SearchDocument = {
+  document_id: string;
+  original_filename: string;
+  document_type?: string;
+  analysis_status: string;
+  analysis_language?: string;
+};
 
 export default function Navbar() {
   const [userName, setUserName] = useState("User");
   const [profileImage, setProfileImage] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<SearchDocument[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [showSuggestions, setShowSuggestions] = useState(false);
   const [theme, setTheme] = useState<"light" | "dark">(() => {
     if (typeof window === "undefined") return "light";
     return localStorage.getItem("theme") === "dark" ? "dark" : "light";
@@ -35,6 +48,36 @@ export default function Navbar() {
       });
     return () => { cancelled = true; };
   }, []);
+
+  useEffect(() => {
+    const query = searchQuery.trim();
+    if (query.length < 2) {
+      setSearchResults([]);
+      setIsSearching(false);
+      return;
+    }
+
+    let ignore = false;
+    const timer = window.setTimeout(() => {
+      setIsSearching(true);
+      void authenticatedFetch(`${API_URL}/api/upload/search?query=${encodeURIComponent(query)}&limit=6`)
+        .then((response) => response.ok ? response.json() : { data: [] })
+        .then((payload: { data?: SearchDocument[] }) => {
+          if (!ignore) setSearchResults(Array.isArray(payload.data) ? payload.data : []);
+        })
+        .catch(() => {
+          if (!ignore) setSearchResults([]);
+        })
+        .finally(() => {
+          if (!ignore) setIsSearching(false);
+        });
+    }, 250);
+
+    return () => {
+      ignore = true;
+      window.clearTimeout(timer);
+    };
+  }, [searchQuery]);
 
   useEffect(() => {
     function applyProfileUpdate(event: Event) {
@@ -71,8 +114,51 @@ export default function Navbar() {
           <input
             type="text"
             placeholder="Search documents, clauses, reports..."
+            value={searchQuery}
+            onChange={(event) => {
+              setSearchQuery(event.target.value);
+              setShowSuggestions(true);
+            }}
+            onFocus={() => setShowSuggestions(true)}
+            onKeyDown={(event) => {
+              if (event.key === "Escape") setShowSuggestions(false);
+            }}
             className="h-11 w-full rounded-xl border border-gray-300 bg-[#EAE6DB] pl-11 pr-4 text-sm outline-none transition-all focus:border-black focus:bg-[#EAE6DB]"
           />
+
+          {showSuggestions && searchQuery.trim().length >= 2 && (
+            <div className="absolute left-0 right-0 top-[calc(100%+0.5rem)] z-50 overflow-hidden rounded-xl border border-gray-200 bg-[#F7F3EA] shadow-lg dark:border-white/15 dark:bg-[#1a1a1a]">
+              {isSearching ? (
+                <div className="flex items-center gap-2 px-4 py-3 text-sm text-gray-500 dark:text-gray-300">
+                  <LoaderCircle size={16} className="animate-spin" /> Searching documents…
+                </div>
+              ) : searchResults.length ? (
+                searchResults.map((document) => (
+                  <Link
+                    key={document.document_id}
+                    href={`/analysis/${document.document_id}?language=${document.analysis_language ?? "en"}`}
+                    onClick={() => {
+                      setShowSuggestions(false);
+                      setSearchQuery("");
+                    }}
+                    className="flex items-center gap-3 border-b border-gray-200 px-4 py-3 last:border-b-0 transition hover:bg-black/5 dark:border-white/10 dark:hover:bg-white/10"
+                  >
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-600 dark:bg-blue-500/15 dark:text-blue-300">
+                      <FileText size={18} />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-semibold text-[#181211] dark:text-white">{document.original_filename}</span>
+                      <span className="block truncate text-xs text-gray-500 dark:text-gray-300">
+                        {document.document_type ?? "Legal document"} · {document.analysis_status === "analyzed" ? "Analyzed" : "Uploaded"}
+                      </span>
+                    </span>
+                  </Link>
+                ))
+              ) : (
+                <p className="px-4 py-3 text-sm text-gray-500 dark:text-gray-300">No saved documents match “{searchQuery.trim()}”.</p>
+              )}
+            </div>
+          )}
         </div>
       </div>
 

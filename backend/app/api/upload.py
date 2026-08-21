@@ -39,8 +39,24 @@ async def upload_document(file: UploadFile = File(...), db: Session = Depends(ge
 
 
 @router.get("/")
-def list_pdfs(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    return {"data": UploadService(db).list_documents(current_user.id)}
+def list_pdfs(
+    limit: int | None = Query(default=None, ge=1, le=100),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """List documents; lightweight screens may request only their recent items."""
+    return {"data": UploadService(db).list_documents(current_user.id, limit=limit)}
+
+
+@router.get("/search")
+def search_documents(
+    query: str = Query(min_length=1, max_length=100),
+    limit: int = Query(default=6, ge=1, le=10),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Search only documents owned by the signed-in user."""
+    return {"data": UploadService(db).search_documents(current_user.id, query, limit)}
 
 
 @router.delete("/{document_id}")
