@@ -7,6 +7,7 @@ import { AlertTriangle, ArrowLeft, Download, FileText, Handshake, LoaderCircle }
 
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import { API_URL, authenticatedFetch } from "@/lib/api";
+import { readPageCache, writePageCache } from "@/lib/client-cache";
 
 type Report = {
   summary: {
@@ -63,12 +64,17 @@ export default function GeneratedReportPage() {
   const summaryLines = report?.contract_summary?.length ? report.contract_summary : report ? fallbackContractSummary(report.summary) : [];
 
   useEffect(() => {
+    const cacheKey = `report:${documentId}:${language}`;
+    const cachedReport = readPageCache<Report>(cacheKey, 5 * 60_000);
+    if (cachedReport) setReport(cachedReport);
+
     async function loadReport() {
       try {
         const response = await authenticatedFetch(`${API_URL}/api/upload/${documentId}/report?language=${language}`);
         const data = await response.json();
         if (!response.ok) throw new Error(data.detail ?? "Report is not ready yet.");
         setReport(data);
+        writePageCache<Report>(cacheKey, data);
       } catch (loadError) {
         setError(loadError instanceof Error ? loadError.message : "Report is not ready yet.");
       }

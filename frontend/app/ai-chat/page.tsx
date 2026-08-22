@@ -6,6 +6,7 @@ import { toast } from "sonner";
 
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import { API_URL, authenticatedFetch } from "@/lib/api";
+import { clearPageCache, readPageCache, writePageCache } from "@/lib/client-cache";
 
 type ChatLanguage = "en" | "hi" | "gu" | "es" | "fr";
 type DocumentItem = { document_id: string; original_filename: string; analysis_status: string; analysis_language?: ChatLanguage };
@@ -68,12 +69,20 @@ export default function AiChatPage() {
   const selectedDocument = useMemo(() => documents.find((document) => document.document_id === selectedDocumentId) ?? null, [documents, selectedDocumentId]);
 
   const loadMessages = useCallback(async (sessionId: string, signal?: AbortSignal) => {
+    const cacheKey = `chat:messages:${sessionId}`;
+    const cachedMessages = readPageCache<Message[]>(cacheKey, 5 * 60_000);
+    if (cachedMessages) {
+      setMessages(cachedMessages);
+      return;
+    }
     setIsLoadingMessages(true);
     try {
       const response = await authenticatedFetch(`${API_URL}/api/chat/sessions/${sessionId}/messages`, { signal });
       if (!response.ok) throw new Error(await responseError(response, "Could not load messages."));
       const data = await response.json() as Message[];
-      setMessages(Array.isArray(data) ? data : []);
+      const fetchedMessages = Array.isArray(data) ? data : [];
+      setMessages(fetchedMessages);
+      writePageCache<Message[]>(cacheKey, fetchedMessages);
     } catch (error) {
       if (error instanceof Error && error.name === "AbortError") return;
       toast.error(error instanceof Error ? error.message : "Could not load messages.");
@@ -83,11 +92,22 @@ export default function AiChatPage() {
   }, []);
 
   const loadSessions = useCallback(async (documentId: string, signal?: AbortSignal) => {
+    const cacheKey = `chat:sessions:${documentId}`;
+    const cachedSessions = readPageCache<Conversation[]>(cacheKey, 5 * 60_000);
+    if (cachedSessions) {
+      setConversations(cachedSessions);
+      const cachedFirstSession = cachedSessions[0];
+      setActiveConversationId(cachedFirstSession?.id ?? null);
+      if (cachedFirstSession) await loadMessages(cachedFirstSession.id, signal);
+      else setMessages([]);
+      return;
+    }
     const response = await authenticatedFetch(`${API_URL}/api/chat/sessions?document_id=${encodeURIComponent(documentId)}`, { signal });
     if (!response.ok) throw new Error(await responseError(response, "Could not load conversations."));
     const data = await response.json() as Conversation[];
     const nextConversations = Array.isArray(data) ? data : [];
     setConversations(nextConversations);
+    writePageCache<Conversation[]>(cacheKey, nextConversations);
     const firstSession = nextConversations[0];
     setActiveConversationId(firstSession?.id ?? null);
     if (firstSession) await loadMessages(firstSession.id, signal);
@@ -98,11 +118,18 @@ export default function AiChatPage() {
     const controller = new AbortController();
     async function loadInitialData() {
       try {
-        setIsLoading(true);
-        const response = await authenticatedFetch(`${API_URL}/api/upload/`, { signal: controller.signal });
-        if (!response.ok) throw new Error(await responseError(response, "Could not load documents."));
-        const result = await response.json();
-        const analyzedDocuments = (Array.isArray(result.data) ? result.data : []).filter((document: DocumentItem) => document.analysis_status === "analyzed");
+        const cachedDocuments = readPageCache<DocumentItem[]>("chat:documents", 60_000);
+        if (!cachedDocuments) setIsLoading(true);
+        let analyzedDocuments: DocumentItem[];
+        if (cachedDocuments) {
+          analyzedDocuments = cachedDocuments;
+        } else {
+          const response = await authenticatedFetch(`${API_URL}/api/upload/`, { signal: controller.signal });
+          if (!response.ok) throw new Error(await responseError(response, "Could not load documents."));
+          const result = await response.json();
+          analyzedDocuments = (Array.isArray(result.data) ? result.data : []).filter((document: DocumentItem) => document.analysis_status === "analyzed");
+          writePageCache<DocumentItem[]>("chat:documents", analyzedDocuments);
+        }
         setDocuments(analyzedDocuments);
         const firstDocument = analyzedDocuments[0];
         if (firstDocument) {
@@ -168,6 +195,7 @@ export default function AiChatPage() {
       if (!response.ok) throw new Error(await responseError(response, "Could not rename the conversation."));
       const updated = await response.json() as Conversation;
       setConversations((current) => current.map((conversation) => conversation.id === sessionId ? updated : conversation));
+      if (selectedDocumentId) clearPageCache(`chat:sessions:${selectedDocumentId}`);
       setEditingConversationId(null);
       toast.success("Conversation renamed.");
     } catch (error) {
@@ -186,6 +214,8 @@ export default function AiChatPage() {
       if (!response.ok) throw new Error(await responseError(response, "Could not delete the conversation."));
       const remaining = conversations.filter((conversation) => conversation.id !== sessionId);
       setConversations(remaining);
+      if (selectedDocumentId) clearPageCache(`chat:sessions:${selectedDocumentId}`);
+      clearPageCache(`chat:messages:${sessionId}`);
       setConversationToDelete(null);
       if (activeConversationId === sessionId) {
         const nextConversation = remaining[0];
@@ -211,6 +241,7 @@ export default function AiChatPage() {
     if (!response.ok) throw new Error(await responseError(response, "Could not create a conversation."));
     const session = await response.json() as Conversation;
     setConversations((current) => [session, ...current]);
+    clearPageCache(`chat:sessions:${selectedDocumentId}`);
     setActiveConversationId(session.id);
     return session.id;
   }
@@ -231,6 +262,8 @@ export default function AiChatPage() {
       if (!response.ok) throw new Error(await responseError(response, "Could not answer your question."));
       const assistantMessage = await response.json() as Message;
       setMessages((current) => [...current, assistantMessage]);
+      clearPageCache(`chat:messages:${sessionId}`);
+      if (selectedDocumentId) clearPageCache(`chat:sessions:${selectedDocumentId}`);
       setConversations((current) => current.map((conversation) => (
         conversation.id === sessionId ? { ...conversation, title: conversation.title === "New document conversation" ? question.slice(0, 80) : conversation.title, updated_at: assistantMessage.created_at } : conversation
       )).sort((first, second) => new Date(second.updated_at).getTime() - new Date(first.updated_at).getTime()));

@@ -47,15 +47,24 @@ const documentTypes = [
 ];
 
 export default function Home() {
-  const [theme, setTheme] = useState<"light" | "dark">(() => {
-    if (typeof window === "undefined") return "light";
-    return localStorage.getItem("theme") === "dark" ? "dark" : "light";
-  });
+  // Start with the same value on the server and browser. The saved preference is
+  // applied after hydration so React does not render different theme icons.
+  const [theme, setTheme] = useState<"light" | "dark">("light");
+  const [hasLoadedTheme, setHasLoadedTheme] = useState(false);
 
   useEffect(() => {
+    const savedTheme = localStorage.getItem("theme");
+    if (savedTheme === "dark") {
+      setTheme("dark");
+    }
+    setHasLoadedTheme(true);
+  }, []);
+
+  useEffect(() => {
+    if (!hasLoadedTheme) return;
     document.documentElement.dataset.theme = theme;
     document.documentElement.style.colorScheme = theme;
-  }, [theme]);
+  }, [hasLoadedTheme, theme]);
 
   function toggleTheme() {
     const nextTheme = theme === "light" ? "dark" : "light";

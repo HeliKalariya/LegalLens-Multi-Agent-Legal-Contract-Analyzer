@@ -7,6 +7,7 @@ import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YA
 
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import { API_URL, authenticatedFetch } from "@/lib/api";
+import { readPageCache, writePageCache } from "@/lib/client-cache";
 
 type DocumentItem = {
   document_id: string;
@@ -30,6 +31,8 @@ type DashboardData = {
   history: { month: string; reports_generated: number; average_risk_score: number }[];
 };
 
+type DashboardCache = { dashboard: DashboardData; documents: DocumentItem[] };
+
 const riskStyles = {
   high: "border-red-300 bg-red-50 text-red-700",
   medium: "border-yellow-300 bg-yellow-50 text-yellow-800",
@@ -45,9 +48,16 @@ export default function DashboardPage() {
 
   useEffect(() => {
     const controller = new AbortController();
+    const cached = readPageCache<DashboardCache>("dashboard");
+    if (cached) {
+      setDashboard(cached.dashboard);
+      setDocuments(cached.documents);
+      setIsLoading(false);
+    }
+
     async function loadDashboard() {
       try {
-        setLoadError("");
+        if (!cached) setLoadError("");
         // The dashboard data and document list are intentionally fetched separately:
         // cards/charts come from dashboard, while the table is the user's documents.
         const [dashboardResponse, documentsResponse] = await Promise.all([
@@ -58,11 +68,13 @@ export default function DashboardPage() {
         if (!dashboardResponse.ok) throw new Error("Could not load dashboard data.");
         if (!documentsResponse.ok) throw new Error("Could not load recent documents.");
 
-        setDashboard(await dashboardResponse.json() as DashboardData);
+        const fetchedDashboard = await dashboardResponse.json() as DashboardData;
         const payload = await documentsResponse.json();
         const fetchedDocuments = Array.isArray(payload.data) ? payload.data : [];
         // Keep the dashboard compact by retaining only the latest five items.
+        setDashboard(fetchedDashboard);
         setDocuments(fetchedDocuments);
+        writePageCache<DashboardCache>("dashboard", { dashboard: fetchedDashboard, documents: fetchedDocuments });
       } catch (error) {
       // React cancels the request during development remounts. That is expected
       // and should not be reported as an unhandled dashboard error. A short

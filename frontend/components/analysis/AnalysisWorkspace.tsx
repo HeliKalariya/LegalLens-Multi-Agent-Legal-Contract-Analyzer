@@ -9,6 +9,7 @@ import "react-pdf/dist/Page/TextLayer.css";
 
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import { API_URL, authenticatedFetch } from "@/lib/api";
+import { readPageCache, writePageCache } from "@/lib/client-cache";
 
 pdfjs.GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.min.mjs", import.meta.url).toString();
 
@@ -39,15 +40,21 @@ export default function AnalysisWorkspace() {
   useEffect(() => {
     let objectUrl: string | null = null;
     const controller = new AbortController();
+    const cacheKey = `analysis:${documentId}:${language}`;
+    const cachedAnalysis = readPageCache<Analysis>(cacheKey, 5 * 60_000);
+    if (cachedAnalysis) setAnalysis(cachedAnalysis);
     async function loadAnalysis() {
       try {
         const [analysisResponse, previewResponse] = await Promise.all([
-          authenticatedFetch(`${API_URL}/api/upload/${documentId}/analysis?language=${language}`, { signal: controller.signal }),
+          cachedAnalysis ? Promise.resolve(null) : authenticatedFetch(`${API_URL}/api/upload/${documentId}/analysis?language=${language}`, { signal: controller.signal }),
           authenticatedFetch(`${API_URL}/api/upload/${documentId}/preview`, { signal: controller.signal }),
         ]);
-        const data = await analysisResponse.json();
-        if (!analysisResponse.ok) throw new Error(data.detail ?? "Analysis is not ready yet.");
-        setAnalysis(data);
+        if (analysisResponse) {
+          const data = await analysisResponse.json();
+          if (!analysisResponse.ok) throw new Error(data.detail ?? "Analysis is not ready yet.");
+          setAnalysis(data);
+          writePageCache<Analysis>(cacheKey, data);
+        }
         if (previewResponse.ok) {
           objectUrl = URL.createObjectURL(await previewResponse.blob());
           setPreviewUrl(objectUrl);

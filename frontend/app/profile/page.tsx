@@ -6,6 +6,7 @@ import { toast } from "sonner";
 
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import { API_URL, authenticatedFetch } from "@/lib/api";
+import { readPageCache, writePageCache } from "@/lib/client-cache";
 
 type Profile = {
   full_name: string;
@@ -28,6 +29,13 @@ export default function ProfilePage() {
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
+    const cachedProfile = readPageCache<Profile>("profile", 5 * 60_000);
+    if (cachedProfile) {
+      setProfile(cachedProfile);
+      setSavedProfile(cachedProfile);
+      setIsLoading(false);
+    }
+
     async function loadProfile() {
       try {
         const response = await authenticatedFetch(`${API_URL}/api/auth/me`);
@@ -35,6 +43,7 @@ export default function ProfilePage() {
         if (!response.ok) throw new Error(result.detail ?? "Could not load profile.");
         setProfile(result);
         setSavedProfile(result);
+        writePageCache<Profile>("profile", result);
       } catch (error) {
         if (error instanceof Error) toast.error(error.message);
       } finally {
@@ -55,6 +64,7 @@ export default function ProfilePage() {
   function publishProfile(updatedProfile: Profile) {
     setProfile(updatedProfile);
     setSavedProfile(updatedProfile);
+    writePageCache<Profile>("profile", updatedProfile);
     window.dispatchEvent(new CustomEvent("profile-updated", { detail: updatedProfile }));
   }
 

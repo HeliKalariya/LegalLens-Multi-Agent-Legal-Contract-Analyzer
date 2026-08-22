@@ -6,6 +6,7 @@ import { BarChart3, FileSearch2, FileText, Search, SlidersHorizontal } from "luc
 
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import { API_URL, authenticatedFetch } from "@/lib/api";
+import { readPageCache, writePageCache } from "@/lib/client-cache";
 
 type Document = {
   document_id: string;
@@ -42,14 +43,21 @@ export default function DocumentsPage() {
 
   useEffect(() => {
     const controller = new AbortController();
+    const cachedDocuments = readPageCache<Document[]>("documents");
+    if (cachedDocuments) {
+      setDocuments(cachedDocuments);
+      setIsLoading(false);
+    }
 
     async function loadDocuments() {
       try {
-        setIsLoading(true);
+        if (!cachedDocuments) setIsLoading(true);
         const response = await authenticatedFetch(`${API_URL}/api/upload/`, { signal: controller.signal });
         const result = await response.json();
         if (!response.ok) throw new Error(result.detail ?? "Could not load documents.");
-        setDocuments(Array.isArray(result.data) ? result.data : []);
+        const fetchedDocuments = Array.isArray(result.data) ? result.data : [];
+        setDocuments(fetchedDocuments);
+        writePageCache<Document[]>("documents", fetchedDocuments);
       } catch (loadError) {
         if (loadError instanceof Error && loadError.name === "AbortError") return;
         setError(loadError instanceof Error ? loadError.message : "Could not load documents.");

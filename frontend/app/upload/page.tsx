@@ -12,6 +12,7 @@ import PdfViewer from "@/components/upload/PdfViewer";
 import UploadDropzone from "@/components/upload/UploadDropzone";
 import RecentUploads from "@/components/upload/RecentUploads";
 import { API_URL, authenticatedFetch } from "@/lib/api";
+import { clearPageCache } from "@/lib/client-cache";
 
 
 const LANGUAGES = [
@@ -53,6 +54,11 @@ export default function UploadPage() {
         if (!statusResponse.ok) throw new Error(statusData.detail ?? "Could not check analysis progress.");
         setAnalysisJob(statusData);
         if (statusData.status === "completed") {
+          clearPageCache(`analysis:${uploadedDocumentId}:${language}`);
+          clearPageCache(`report:${uploadedDocumentId}:${language}`);
+          clearPageCache("documents");
+          clearPageCache("dashboard");
+          clearPageCache("chat:documents");
           router.push(`/analysis/${uploadedDocumentId}?language=${language}`);
           return;
         }
@@ -97,6 +103,10 @@ export default function UploadPage() {
           onUploaded={(documentId) => {
             setUploadedDocumentId(documentId);
             setAnalysisError("");
+            // A document-library change must not leave stale cards or lists visible.
+            clearPageCache("recent-uploads");
+            clearPageCache("documents");
+            clearPageCache("dashboard");
             setRefreshKey((v) => v + 1);
           }}
         />

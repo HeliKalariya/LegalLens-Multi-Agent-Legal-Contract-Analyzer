@@ -5,6 +5,7 @@ import { AlertTriangle, Eye, FileText, LoaderCircle, Trash2, X } from "lucide-re
 import { toast } from "sonner";
 
 import { API_URL, authenticatedFetch } from "@/lib/api";
+import { clearPageCache, readPageCache, writePageCache } from "@/lib/client-cache";
 
 type Document = { document_id: string; original_filename: string; size: number; uploaded_at: string };
 type RecentUploadsProps = { refreshKey?: number; onOpenPdf: (documentId: string) => void; onDeleted?: (documentId: string) => void };
@@ -23,15 +24,22 @@ export default function RecentUploads({ refreshKey = 0, onOpenPdf, onDeleted }: 
 
   useEffect(() => {
     const controller = new AbortController();
+    const cachedDocuments = refreshKey === 0 ? readPageCache<Document[]>("recent-uploads", 30_000) : null;
+    if (cachedDocuments) {
+      setDocuments(cachedDocuments);
+      setIsLoading(false);
+    }
     async function loadDocuments() {
       try {
-        setIsLoading(true);
+        if (!cachedDocuments) setIsLoading(true);
         setError("");
         // The upload page only displays recent history, so avoid fetching a large library.
         const response = await authenticatedFetch(`${API_URL}/api/upload/?limit=10`, { signal: controller.signal });
         const result = await response.json();
         if (!response.ok) throw new Error(result.detail ?? "Could not load documents.");
-        setDocuments(Array.isArray(result.data) ? result.data : []);
+        const fetchedDocuments = Array.isArray(result.data) ? result.data : [];
+        setDocuments(fetchedDocuments);
+        writePageCache<Document[]>("recent-uploads", fetchedDocuments);
       } catch (loadError) {
         if (loadError instanceof Error && loadError.name === "AbortError") return;
         setError(loadError instanceof Error ? loadError.message : "Could not load documents.");
@@ -52,6 +60,9 @@ export default function RecentUploads({ refreshKey = 0, onOpenPdf, onDeleted }: 
       const result = await response.json();
       if (!response.ok) throw new Error(result.detail ?? "Could not delete the document.");
       setDocuments((current) => current.filter((item) => item.document_id !== document.document_id));
+      clearPageCache("recent-uploads");
+      clearPageCache("documents");
+      clearPageCache("dashboard");
       onDeleted?.(document.document_id);
       setDocumentToDelete(null);
       toast.success("Document deleted.");
