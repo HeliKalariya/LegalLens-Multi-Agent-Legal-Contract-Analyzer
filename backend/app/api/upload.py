@@ -4,6 +4,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Query, UploadFile, status
 from fastapi.responses import FileResponse
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.database.session import get_db
@@ -13,6 +14,10 @@ from app.services.upload_service import DuplicateDocumentError, NotALegalDocumen
 
 router = APIRouter(prefix="/api/upload", tags=["Upload"])
 MAX_FILE_SIZE = 20 * 1024 * 1024
+
+
+class DocumentRenameRequest(BaseModel):
+    filename: str = Field(min_length=1, max_length=255)
 
 
 @router.post("/", status_code=status.HTTP_201_CREATED)
@@ -67,6 +72,17 @@ def delete_pdf(document_id: str, db: Session = Depends(get_db), current_user: Us
     except FileNotFoundError as error:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found.") from error
     return {"message": "Document deleted successfully."}
+
+
+@router.put("/{document_id}")
+def rename_document(document_id: str, request: DocumentRenameRequest, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Rename a document display name owned by the signed-in user."""
+    try:
+        return {"data": UploadService(db).rename_document(current_user.id, document_id, request.filename)}
+    except FileNotFoundError as error:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found.") from error
+    except ValueError as error:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)) from error
 
 
 @router.post("/{document_id}/analysis-jobs", status_code=status.HTTP_202_ACCEPTED)

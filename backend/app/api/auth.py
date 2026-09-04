@@ -151,7 +151,7 @@ async def register(
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(error))
 
 @router.post("/login")
-def login(
+async def login(
 
     request: LoginRequest,
 
@@ -163,10 +163,20 @@ def login(
 
     try:
 
-        return service.login_user(
+        result = service.login_user(
             request.email,
             request.password
         )
+        if result.get("verification_required"):
+            try:
+                delivery = await service.resend_email_verification(result["email"])
+                message = delivery["message"]
+            except EmailDeliveryError:
+                # The verification page still lets the user try Resend. Do not
+                # make a valid account inaccessible because mail is temporary down.
+                message = "Your email still needs verification. Request a new code from the verification page."
+            return {**result, "message": message}
+        return result
 
     except ValueError as e:
 
@@ -310,17 +320,11 @@ def update_profile(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Update the signed-in user's profile and refresh their token if email changes."""
-    existing_user = (
-        db.query(User)
-        .filter(User.email == request.email, User.id != current_user.id)
-        .first()
-    )
-    if existing_user:
-        raise HTTPException(status_code=400, detail="Email already exists")
+    """Update editable profile fields. Email addresses are immutable account IDs."""
+    if str(request.email).lower() != current_user.email.lower():
+        raise HTTPException(status_code=400, detail="Email address cannot be changed.")
 
     current_user.full_name = request.full_name.strip()
-    current_user.email = str(request.email).lower()
     current_user.organization = request.organization.strip() if request.organization else None
     current_user.job_title = request.job_title.strip() if request.job_title else None
     db.commit()

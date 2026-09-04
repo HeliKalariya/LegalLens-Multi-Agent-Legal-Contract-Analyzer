@@ -234,12 +234,6 @@ export default function UploadPage() {
           <RecentUploads
             refreshKey={refreshKey}
             onOpenPdf={setSelectedDocumentId}
-            onDeleted={(documentId) => {
-              if (selectedDocumentId === documentId) {
-                setSelectedDocumentId(null);
-              }
-              setRefreshKey((current) => current + 1);
-            }}
           />
 
         </section>

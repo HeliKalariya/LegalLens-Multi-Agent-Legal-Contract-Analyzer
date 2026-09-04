@@ -50,9 +50,12 @@ export default function DashboardPage() {
     const controller = new AbortController();
     const cached = readPageCache<DashboardCache>("dashboard");
     if (cached) {
-      setDashboard(cached.dashboard);
-      setDocuments(cached.documents);
-      setIsLoading(false);
+      queueMicrotask(() => {
+        if (controller.signal.aborted) return;
+        setDashboard(cached.dashboard);
+        setDocuments(cached.documents);
+        setIsLoading(false);
+      });
     }
 
     async function loadDashboard() {
@@ -94,7 +97,9 @@ export default function DashboardPage() {
   const distribution = dashboard?.risk_distribution ?? { safe: 0, moderate: 0, high: 0 };
   const safePercent = Math.round(distribution.safe);
   const mediumPercent = Math.round(distribution.moderate);
-  const highPercent = Math.max(0, 100 - safePercent - mediumPercent);
+  // A new account has no analyzed clauses, so all three risk values must be zero.
+  // Do not derive high risk from the remaining percentage; that incorrectly showed 100%.
+  const highPercent = Math.max(0, Math.round(distribution.high));
   const history = dashboard?.history ?? [];
   const today = new Date();
   const currentYear = today.getFullYear();

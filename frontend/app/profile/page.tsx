@@ -31,9 +31,11 @@ export default function ProfilePage() {
   useEffect(() => {
     const cachedProfile = readPageCache<Profile>("profile", 5 * 60_000);
     if (cachedProfile) {
-      setProfile(cachedProfile);
-      setSavedProfile(cachedProfile);
-      setIsLoading(false);
+      queueMicrotask(() => {
+        setProfile(cachedProfile);
+        setSavedProfile(cachedProfile);
+        setIsLoading(false);
+      });
     }
 
     async function loadProfile() {
@@ -159,7 +161,7 @@ export default function ProfilePage() {
 
             <div className="mt-7 grid gap-5 sm:grid-cols-2">
               <ProfileField label="Name" value={profile.full_name} disabled={!isEditing} onChange={(value) => updateField("full_name", value)} />
-              <ProfileField label="Email" type="email" value={profile.email} disabled={!isEditing} onChange={(value) => updateField("email", value)} />
+              <ProfileField label="Email" type="email" value={profile.email} disabled helpText="Your email address cannot be changed." onChange={() => undefined} />
               <ProfileField label="Organization" value={profile.organization ?? ""} disabled={!isEditing} onChange={(value) => updateField("organization", value)} />
               <ProfileField label="Job title" value={profile.job_title ?? ""} disabled={!isEditing} onChange={(value) => updateField("job_title", value)} />
             </div>
@@ -172,6 +174,6 @@ export default function ProfilePage() {
   );
 }
 
-function ProfileField({ label, value, onChange, type = "text", disabled }: { label: string; value: string; onChange: (value: string) => void; type?: string; disabled: boolean }) {
-  return <label><span className="mb-2 block text-sm font-semibold">{label}</span><input type={type} value={value} disabled={disabled} onChange={(event) => onChange(event.target.value)} className="w-full rounded-xl border border-black/15 bg-[#F7F3EA] px-4 py-3 text-sm outline-none transition focus:border-[#181211] disabled:cursor-default disabled:opacity-75" /></label>;
+function ProfileField({ label, value, onChange, type = "text", disabled, helpText }: { label: string; value: string; onChange: (value: string) => void; type?: string; disabled: boolean; helpText?: string }) {
+  return <label><span className="mb-2 block text-sm font-semibold">{label}</span><input type={type} value={value} disabled={disabled} onChange={(event) => onChange(event.target.value)} className="w-full rounded-xl border border-black/15 bg-[#F7F3EA] px-4 py-3 text-sm outline-none transition focus:border-[#181211] disabled:cursor-default disabled:opacity-75" />{helpText && <span className="mt-1.5 block text-xs text-[#67758A]">{helpText}</span>}</label>;
 }

@@ -65,6 +65,7 @@ def _call_groq(
     messages: list,
     *,
     temperature: float = 0.2,
+    seed: int | None = None,
     json_mode: bool = False,
     timeout: float = 60,
     max_completion_tokens: int = 2048,
@@ -79,6 +80,9 @@ def _call_groq(
         "temperature": temperature,
         "max_completion_tokens": max_completion_tokens,
     }
+    # Use only when a caller needs repeatable results for the same input.
+    if seed is not None:
+        payload["seed"] = seed
 
     if json_mode:
         payload["response_format"] = {
@@ -147,6 +151,7 @@ def generate(
     system_instruction: str | None = None,
     json_mode: bool = False,
     temperature: float = 0.2,
+    seed: int | None = None,
     timeout: float = 60,
     max_completion_tokens: int = 2048,
 ) -> str:
@@ -174,6 +179,7 @@ def generate(
     response = _call_groq(
         messages,
         temperature=temperature,
+        seed=seed,
         json_mode=json_mode,
         timeout=timeout,
         max_completion_tokens=max_completion_tokens,
@@ -193,6 +199,7 @@ def generate_json(
     *,
     system_instruction: str | None = None,
     temperature: float = 0.2,
+    seed: int | None = None,
     max_completion_tokens: int = 2048,
 ):
     """
@@ -204,6 +211,7 @@ def generate_json(
         system_instruction=system_instruction,
         json_mode=True,
         temperature=temperature,
+        seed=seed,
         max_completion_tokens=max_completion_tokens,
     )
 

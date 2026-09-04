@@ -54,10 +54,10 @@ export default function Home() {
 
   useEffect(() => {
     const savedTheme = localStorage.getItem("theme");
-    if (savedTheme === "dark") {
-      setTheme("dark");
-    }
-    setHasLoadedTheme(true);
+    queueMicrotask(() => {
+      if (savedTheme === "dark") setTheme("dark");
+      setHasLoadedTheme(true);
+    });
   }, []);
 
   useEffect(() => {

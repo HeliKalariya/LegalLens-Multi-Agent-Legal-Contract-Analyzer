@@ -18,7 +18,7 @@ export default function VerifyEmailPage() {
   const [resending, setResending] = useState(false);
 
   useEffect(() => {
-    setEmail(new URLSearchParams(window.location.search).get("email") ?? "");
+    queueMicrotask(() => setEmail(new URLSearchParams(window.location.search).get("email") ?? ""));
   }, []);
 
   async function submitVerification() {

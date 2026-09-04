@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import logging
 
 from app.schemas.report import ClauseRisk
@@ -58,7 +59,11 @@ def extract_clause_risks(text: str, language: str = "en") -> list[ClauseRisk]:
             prompt = CLAUSE_EXTRACTION_PROMPT.format(text=text[:_MAX_CHARS])
         result = generate_json(
             prompt,
-            temperature=0.1,
+            # Same document text and language always receive the same sampling
+            # seed. Combined with zero temperature this prevents normal LLM
+            # variation from changing a score on another computer.
+            temperature=0,
+            seed=int(hashlib.sha256(f"{language}:{text[:_MAX_CHARS]}".encode("utf-8")).hexdigest()[:8], 16),
             # Keep the compact structural response comfortably below the provider's
             # JSON-output limit; later specialist agents enrich these clauses.
             max_completion_tokens=1800,

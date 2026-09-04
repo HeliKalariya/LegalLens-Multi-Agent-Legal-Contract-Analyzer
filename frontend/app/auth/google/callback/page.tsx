@@ -18,7 +18,7 @@ export default function GoogleCallbackPage() {
 
     if (signInError || !accessToken || !refreshToken) {
       const message = signInError || "Google sign-in did not return a valid session.";
-      setError(message);
+      queueMicrotask(() => setError(message));
       toast.error("Google sign-in failed", { description: message });
       const timer = window.setTimeout(() => router.replace("/login"), 2500);
       return () => window.clearTimeout(timer);

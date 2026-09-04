@@ -99,6 +99,11 @@ class AuthService:
         if not user:
             raise ValueError("Invalid verification code.")
         if user.is_verified:
+            # Clean up records created before this cleanup behavior was added.
+            self.db.query(EmailVerificationToken).filter(
+                EmailVerificationToken.user_id == user.id,
+            ).delete(synchronize_session=False)
+            self.db.commit()
             return {"success": True, "message": "Your email is already verified."}
 
         code_hash = hashlib.sha256(code.encode("utf-8")).hexdigest()
@@ -110,8 +115,12 @@ class AuthService:
         if not record or record.expires_at <= datetime.utcnow():
             raise ValueError("This verification code is invalid or expired.")
 
-        record.used = True
         user.is_verified = True
+        # A verified account must not retain a reusable or historical email code.
+        # Delete every code for this user, including the one just accepted.
+        self.db.query(EmailVerificationToken).filter(
+            EmailVerificationToken.user_id == user.id,
+        ).delete(synchronize_session=False)
         self.db.commit()
         return {"success": True, "message": "Email verified successfully. You can now log in."}
     
@@ -132,7 +141,12 @@ class AuthService:
             raise ValueError("Invalid email or password")
 
         if not user.is_verified:
-            raise ValueError("Please verify your email before logging in. We sent you a verification code.")
+            # Login has confirmed the password. The API route will resend a code
+            # and the frontend will continue at the verification screen.
+            return {
+                "verification_required": True,
+                "email": user.email,
+            }
 
         access_token = self._access_token_for(user)
         refresh_token = self._create_refresh_token(user.id)

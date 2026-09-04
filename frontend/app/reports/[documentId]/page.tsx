@@ -56,6 +56,7 @@ function fallbackContractSummary(summary: Report["summary"]): string[] {
 export default function GeneratedReportPage() {
   const { documentId } = useParams<{ documentId: string }>();
   const language = useSearchParams().get("language") ?? "en";
+  const languageName = { en: "English", hi: "Hindi", gu: "Gujarati", es: "Spanish", fr: "French" }[language] ?? "English";
   const [report, setReport] = useState<Report | null>(null);
   const [error, setError] = useState("");
   const [isDownloading, setIsDownloading] = useState(false);
@@ -66,7 +67,7 @@ export default function GeneratedReportPage() {
   useEffect(() => {
     const cacheKey = `report:${documentId}:${language}`;
     const cachedReport = readPageCache<Report>(cacheKey, 5 * 60_000);
-    if (cachedReport) setReport(cachedReport);
+    if (cachedReport) queueMicrotask(() => setReport(cachedReport));
 
     async function loadReport() {
       try {
@@ -117,7 +118,7 @@ export default function GeneratedReportPage() {
           <section className="mt-6 grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">{[["High risk", report.summary.high_risk_count], ["Moderate", report.summary.medium_risk_count], ["Safe", report.summary.safe_count], ["Negotiable", report.summary.negotiable_count]].map(([label, count]) => <div key={String(label)} className="rounded-2xl border border-black/10 bg-[#EAE6DB] p-4"><p className="text-sm text-[#67758A]">{label} clauses</p><p className="mt-3 text-3xl font-bold">{count}</p></div>)}</section>
           <section className="mt-8 rounded-2xl border border-black/10 bg-[#EAE6DB] p-5 sm:p-7"><div className="flex items-center gap-3"><AlertTriangle className="h-6 w-6 text-[#0875D1]" /><h2 className="text-xl font-bold">Top risks</h2></div><div className="mt-5 space-y-3">{report.top_risks.map((risk) => <article key={risk.rank} className="rounded-xl border border-black/10 bg-[#F7F3EA] p-4"><div className="flex gap-3"><span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#0875D1] text-sm font-bold text-white">{risk.rank}</span><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><h3 className="font-bold">{risk.title}</h3><span className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${getClauseBadgeClass(risk.risk_level)}`}>{risk.risk_level === "high" ? "High risk" : risk.risk_level === "medium" ? "Moderate" : "Safe"}</span></div><p className="mt-1 text-xs text-[#67758A]">Page {risk.page}</p><p className="mt-3 text-sm leading-6 text-[#526174]">{risk.explanation}</p></div></div></article>)}</div></section>
           <section className="mt-8 rounded-2xl border border-black/10 bg-[#EAE6DB] p-5 sm:p-7"><div className="flex items-center gap-3"><Handshake className="h-6 w-6 text-[#0875D1]" /><h2 className="text-xl font-bold">Negotiation terms ({(report.negotiation_terms ?? []).length})</h2></div><p className="mt-2 text-sm text-[#67758A]">Every clause marked negotiable in this report is listed below.</p><div className="mt-5 space-y-3">{(report.negotiation_terms ?? []).length > 0 ? report.negotiation_terms?.map((term, index) => <article key={`${term.title}-${term.page}-${index}`} className="rounded-xl border border-black/10 bg-[#F7F3EA] p-4"><div className="flex gap-3"><span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#0875D1] text-sm font-bold text-white">{index + 1}</span><div><div className="flex flex-wrap items-center gap-2"><h3 className="font-bold">{term.title}</h3><span className="text-xs text-[#67758A]">Page {term.page}</span></div><p className="mt-2 text-sm leading-6 text-[#526174]">{term.suggestion}</p></div></div></article>) : <div className="rounded-xl border border-dashed border-black/15 bg-[#F7F3EA] p-4 text-sm text-[#67758A]">No clauses were marked negotiable for this document.</div>}</div></section>
-          <section className="mt-8 rounded-2xl border border-black/10 bg-[#EAE6DB] p-5 sm:p-7"><div className="flex items-center gap-3"><FileText className="h-6 w-6 text-[#0875D1]" /><h2 className="text-xl font-bold">Plain English summary</h2></div><p className="mt-4 text-sm leading-7 text-[#526174]">{summaryLines.join(" ")}</p></section>
+          <section className="mt-8 rounded-2xl border border-black/10 bg-[#EAE6DB] p-5 sm:p-7"><div className="flex items-center gap-3"><FileText className="h-6 w-6 text-[#0875D1]" /><h2 className="text-xl font-bold">Plain {languageName} summary</h2></div><p className="mt-4 text-sm leading-7 text-[#526174]">{summaryLines.join(" ")}</p></section>
         </>}
       </main>
     </DashboardLayout>

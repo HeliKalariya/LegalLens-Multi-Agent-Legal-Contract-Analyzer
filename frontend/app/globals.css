@@ -8,8 +8,8 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: Arial, Helvetica, sans-serif;
+  --font-mono: "Courier New", monospace;
 }
 
 html,body {
@@ -49,7 +49,8 @@ html[data-theme="dark"] [class*="bg-[#F5F1E8]"] {
 html[data-theme="dark"] [class*="bg-[#EAE6DB]"],
 html[data-theme="dark"] [class*="bg-[#DDD8CF]"],
 html[data-theme="dark"] [class*="bg-[#DDD7CC]"],
-html[data-theme="dark"] [class*="bg-[#D5D5D5]"] {
+html[data-theme="dark"] [class*="bg-[#D5D5D5]"],
+html[data-theme="dark"] [class*="bg-[#EAF4FE]"] {
   background-color: #181818 !important;
 }
 
@@ -68,6 +69,8 @@ html[data-theme="dark"] [class*="text-gray-950"] {
 
 html[data-theme="dark"] [class*="text-[#526174]"],
 html[data-theme="dark"] [class*="text-[#67758A]"],
+html[data-theme="dark"] [class*="text-[#10243E]"],
+html[data-theme="dark"] [class*="text-[#35465D]"],
 html[data-theme="dark"] [class*="text-gray-400"],
 html[data-theme="dark"] [class*="text-gray-500"],
 html[data-theme="dark"] [class*="text-gray-600"],

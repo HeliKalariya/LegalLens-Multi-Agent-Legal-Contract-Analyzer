@@ -22,6 +22,7 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen import canvas
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -139,7 +140,7 @@ class UploadService:
         ]
 
     def search_documents(self, user_id: int, query: str, limit: int = 6) -> list[dict]:
-        """Return the current user's newest filename/type matches for global search."""
+        """Search a user's document names and the clauses in their newest analyses."""
         term = query.strip()
         if not term:
             return []
@@ -156,10 +157,73 @@ class UploadService:
             .all()
         )
         latest_analyses = self._latest_completed_analyses([document.id for document in documents])
-        return [
-            self._public_document(document, latest_analyses.get(document.id), analysis_loaded=True)
-            for document in documents
+        document_results = []
+        for document in documents:
+            payload = self._public_document(document, latest_analyses.get(document.id), analysis_loaded=True)
+            payload["result_type"] = "document"
+            document_results.append(payload)
+
+        # A document can have an analysis in several languages. The window function
+        # picks one newest completed analysis per document, avoiding duplicate clause
+        # suggestions while still linking the result to its correct language view.
+        ranked_analyses = (
+            self.db.query(
+                DocumentAnalysis.id.label("analysis_id"),
+                DocumentAnalysis.document_id.label("document_id"),
+                DocumentAnalysis.language.label("language"),
+                func.row_number()
+                .over(
+                    partition_by=DocumentAnalysis.document_id,
+                    order_by=(DocumentAnalysis.completed_at.desc(), DocumentAnalysis.id.desc()),
+                )
+                .label("position"),
+            )
+            .join(Document, Document.id == DocumentAnalysis.document_id)
+            .filter(Document.user_id == user_id, DocumentAnalysis.status == "completed")
+            .subquery()
+        )
+        clause_rows = (
+            self.db.query(Clause, Document, ranked_analyses.c.language)
+            .join(ranked_analyses, Clause.analysis_id == ranked_analyses.c.analysis_id)
+            .join(Document, Document.id == Clause.document_id)
+            .filter(
+                ranked_analyses.c.position == 1,
+                or_(
+                    Clause.title.ilike(pattern),
+                    Clause.clause_number.ilike(pattern),
+                    Clause.original_text.ilike(pattern),
+                    Clause.plain_english.ilike(pattern),
+                    Clause.risk_reason.ilike(pattern),
+                    Clause.negotiation_suggestion.ilike(pattern),
+                ),
+            )
+            .order_by(Document.created_at.desc(), Clause.sort_order.asc())
+            .limit(limit)
+            .all()
+        )
+
+        clause_results = [
+            {
+                "result_type": "clause",
+                "document_id": document.id,
+                "original_filename": document.original_filename,
+                "document_type": document.document_type,
+                "analysis_status": document.analysis_status,
+                "analysis_language": language,
+                "clause_id": clause.id,
+                "clause_number": clause.clause_number,
+                "clause_title": clause.title,
+                "page_number": clause.page_number,
+                "risk_level": clause.risk_level,
+                # Keep the suggestion compact; the full text is available after opening it.
+                "matched_text": (clause.plain_english or clause.original_text or "").replace("\n", " ").strip()[:180],
+            }
+            for clause, document, language in clause_rows
         ]
+
+        # Clause hits come first because they take the user directly to the exact
+        # provision. Filename/type hits are still included as a fallback.
+        return (clause_results + document_results)[:limit]
 
     def get_pdf_path(self, user_id: int, document_id: str) -> Path | None:
         document = self._get_document(user_id, document_id)
@@ -194,6 +258,38 @@ class UploadService:
             preview_path.unlink(missing_ok=True)
         except OSError as error:
             logger.warning("Document %s was deleted from the database but its local file could not be removed: %s", document_id, error)
+
+    def rename_document(self, user_id: int, document_id: str, filename: str) -> dict:
+        """Rename the display name without changing the stored file or its extension."""
+        document = self._require_document(user_id, document_id)
+        requested_name = Path(filename.strip()).name
+        if not requested_name:
+            raise ValueError("Document name cannot be empty.")
+
+        current_suffix = Path(document.original_filename).suffix.lower()
+        requested_path = Path(requested_name)
+        # The uploaded file itself is not replaced. Keep its original extension
+        # so a renamed PDF/DOCX remains clearly identifiable to the user.
+        display_name = requested_name if requested_path.suffix.lower() == current_suffix else f"{requested_path.stem}{current_suffix}"
+        if len(display_name) > 255:
+            raise ValueError("Document name cannot exceed 255 characters.")
+
+        document.original_filename = display_name
+        analyses = self.db.query(DocumentAnalysis).filter(DocumentAnalysis.document_id == document.id).all()
+        for analysis in analyses:
+            raw_analysis = dict(analysis.raw_analysis or {})
+            summary = dict(raw_analysis.get("summary") or {})
+            summary["filename"] = display_name
+            raw_analysis["summary"] = summary
+            analysis.raw_analysis = raw_analysis
+        self.db.query(Report).filter(Report.document_id == document.id).update(
+            {Report.title: f"Legal analysis: {display_name}"},
+            synchronize_session=False,
+        )
+        self.db.commit()
+        self.db.refresh(document)
+        latest_analysis = self._latest_completed_analyses([document.id]).get(document.id)
+        return self._public_document(document, latest_analysis, analysis_loaded=True)
 
     def analyze_pdf(self, user_id: int, document_id: str, analysis_id: str | None = None, language: str = "en") -> dict:
         """Generate and persist one language-specific analysis and report for a document."""

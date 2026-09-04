@@ -1,25 +1,33 @@
 "use client";
 
 import Link from "next/link";
-import { FileText, LoaderCircle, Moon, Search, Sun } from "lucide-react";
-import { useEffect, useState } from "react";
+import { CircleHelp, FileSearch, FileText, LoaderCircle, Moon, Search, Sun } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { API_URL, authenticatedFetch } from "@/lib/api";
 
-type SearchDocument = {
+type SearchResult = {
+  result_type?: "document" | "clause";
   document_id: string;
   original_filename: string;
   document_type?: string;
   analysis_status: string;
   analysis_language?: string;
+  clause_id?: string;
+  clause_number?: string;
+  clause_title?: string;
+  page_number?: number;
+  risk_level?: "high" | "medium" | "safe";
+  matched_text?: string;
 };
 
 export default function Navbar() {
   const [userName, setUserName] = useState("User");
   const [profileImage, setProfileImage] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
-  const [searchResults, setSearchResults] = useState<SearchDocument[]>([]);
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const [theme, setTheme] = useState<"light" | "dark">(() => {
     if (typeof window === "undefined") return "light";
     return localStorage.getItem("theme") === "dark" ? "dark" : "light";
@@ -52,8 +60,10 @@ export default function Navbar() {
   useEffect(() => {
     const query = searchQuery.trim();
     if (query.length < 2) {
-      setSearchResults([]);
-      setIsSearching(false);
+      queueMicrotask(() => {
+        setSearchResults([]);
+        setIsSearching(false);
+      });
       return;
     }
 
@@ -62,7 +72,7 @@ export default function Navbar() {
       setIsSearching(true);
       void authenticatedFetch(`${API_URL}/api/upload/search?query=${encodeURIComponent(query)}&limit=6`)
         .then((response) => response.ok ? response.json() : { data: [] })
-        .then((payload: { data?: SearchDocument[] }) => {
+        .then((payload: { data?: SearchResult[] }) => {
           if (!ignore) setSearchResults(Array.isArray(payload.data) ? payload.data : []);
         })
         .catch(() => {
@@ -89,6 +99,17 @@ export default function Navbar() {
     return () => window.removeEventListener("profile-updated", applyProfileUpdate);
   }, []);
 
+  useEffect(() => {
+    function focusGlobalSearch(event: Event) {
+      const query = (event as CustomEvent<{ query?: string }>).detail?.query;
+      if (typeof query === "string") setSearchQuery(query);
+      searchInputRef.current?.focus();
+      setShowSuggestions(true);
+    }
+    window.addEventListener("focus-global-search", focusGlobalSearch);
+    return () => window.removeEventListener("focus-global-search", focusGlobalSearch);
+  }, []);
+
   function toggleTheme() {
     const nextTheme = theme === "light" ? "dark" : "light";
     setPreferredTheme(nextTheme);
@@ -112,6 +133,7 @@ export default function Navbar() {
           />
 
           <input
+            ref={searchInputRef}
             type="text"
             placeholder="Search documents, clauses, reports..."
             value={searchQuery}
@@ -130,13 +152,13 @@ export default function Navbar() {
             <div className="absolute left-0 right-0 top-[calc(100%+0.5rem)] z-50 overflow-hidden rounded-xl border border-gray-200 bg-[#F7F3EA] shadow-lg dark:border-white/15 dark:bg-[#1a1a1a]">
               {isSearching ? (
                 <div className="flex items-center gap-2 px-4 py-3 text-sm text-gray-500 dark:text-gray-300">
-                  <LoaderCircle size={16} className="animate-spin" /> Searching documents…
+                  <LoaderCircle size={16} className="animate-spin" /> Searching documents and clauses…
                 </div>
               ) : searchResults.length ? (
-                searchResults.map((document) => (
+                searchResults.map((result) => (
                   <Link
-                    key={document.document_id}
-                    href={`/analysis/${document.document_id}?language=${document.analysis_language ?? "en"}`}
+                    key={`${result.result_type ?? "document"}-${result.clause_id ?? result.document_id}`}
+                    href={`/analysis/${result.document_id}?language=${result.analysis_language ?? "en"}${result.result_type === "clause" && result.clause_id ? `&clause=${result.clause_id}` : ""}`}
                     onClick={() => {
                       setShowSuggestions(false);
                       setSearchQuery("");
@@ -144,18 +166,21 @@ export default function Navbar() {
                     className="flex items-center gap-3 border-b border-gray-200 px-4 py-3 last:border-b-0 transition hover:bg-black/5 dark:border-white/10 dark:hover:bg-white/10"
                   >
                     <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-600 dark:bg-blue-500/15 dark:text-blue-300">
-                      <FileText size={18} />
+                      {result.result_type === "clause" ? <FileSearch size={18} /> : <FileText size={18} />}
                     </span>
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate text-sm font-semibold text-[#181211] dark:text-white">{document.original_filename}</span>
+                      <span className="block truncate text-sm font-semibold text-[#181211] dark:text-white">{result.result_type === "clause" ? result.clause_title : result.original_filename}</span>
                       <span className="block truncate text-xs text-gray-500 dark:text-gray-300">
-                        {document.document_type ?? "Legal document"} · {document.analysis_status === "analyzed" ? "Analyzed" : "Uploaded"}
+                        {result.result_type === "clause"
+                          ? `${result.original_filename} · Clause ${result.clause_number ?? ""}${result.page_number ? ` · Page ${result.page_number}` : ""}`
+                          : `${result.document_type ?? "Legal document"} · ${result.analysis_status === "analyzed" ? "Analyzed" : "Uploaded"}`}
                       </span>
+                      {result.result_type === "clause" && result.matched_text && <span className="mt-0.5 block truncate text-xs text-gray-500 dark:text-gray-300">{result.matched_text}</span>}
                     </span>
                   </Link>
                 ))
               ) : (
-                <p className="px-4 py-3 text-sm text-gray-500 dark:text-gray-300">No saved documents match “{searchQuery.trim()}”.</p>
+                <p className="px-4 py-3 text-sm text-gray-500 dark:text-gray-300">No saved documents or clauses match “{searchQuery.trim()}”.</p>
               )}
             </div>
           )}
@@ -164,6 +189,14 @@ export default function Navbar() {
 
       {/* Right Side */}
       <div className="ml-3 flex shrink-0 items-center gap-2 sm:ml-8 sm:gap-5">
+        <Link
+          href="/help"
+          className="rounded-lg p-2 transition hover:bg-gray-100"
+          aria-label="Open Help and search guide"
+          title="Help and search guide"
+        >
+          <CircleHelp size={21} />
+        </Link>
         <button
           type="button"
           onClick={toggleTheme}

@@ -38,11 +38,10 @@ const [errors, setErrors] = useState({
   const [loading, setLoading] = useState(false); 
 
 
-   const isFormValid =
-  email.trim() !== "" &&
-  password.trim() !== "" &&
-  !errors.email &&
-  !errors.password;
+   // The submit button uses live validation, so an older API/validation error
+   // cannot leave it disabled after the user has corrected the fields.
+   const currentValidation = validateLogin(email, password);
+   const isFormValid = !currentValidation.email && !currentValidation.password;
 
  const handleLogin = async () => {
 
@@ -56,6 +55,7 @@ const [errors, setErrors] = useState({
 
   // Save Errors
   setErrors(validationErrors);
+  setTouched({ email: true, password: true });
 
   // Stop API call if validation fails
   if (
@@ -70,6 +70,12 @@ const [errors, setErrors] = useState({
 
     const data = await loginUser(email, password);
 
+        if (data.verification_required) {
+          toast.info("Email verification required", { description: data.message ?? "Enter the verification code sent to your email." });
+          router.push(`/verify-email?email=${encodeURIComponent(data.email ?? email)}`);
+          return;
+        }
+
         localStorage.setItem(
           "access_token",
           data.access_token
@@ -82,9 +88,8 @@ const [errors, setErrors] = useState({
         }, 700);
 
   } catch (error) {
-
-    console.error(error);
-
+    // Invalid credentials are an expected user-facing outcome, not a console
+    // error. The toast below explains it without Next.js showing a dev overlay.
     toast.error("Login failed", {
       description: error instanceof Error ? error.message : "Unable to connect to the server. Please try again.",
     });

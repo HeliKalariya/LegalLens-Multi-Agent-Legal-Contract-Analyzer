@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
-import { ChevronDown, FileText, LoaderCircle, Sparkles } from "lucide-react";
+import { ChevronDown, FileText, LoaderCircle, Minus, Plus, Sparkles } from "lucide-react";
 import { Document as PdfDocument, Page, pdfjs } from "react-pdf";
 import "react-pdf/dist/Page/TextLayer.css";
 
@@ -26,7 +26,9 @@ const riskStyles: Record<RiskLevel, string> = { high: "border-red-300 bg-red-50 
 /** Page-aware clause review workspace shown after an analysis job completes. */
 export default function AnalysisWorkspace() {
   const { documentId } = useParams<{ documentId: string }>();
-  const language = useSearchParams().get("language") ?? "en";
+  const searchParams = useSearchParams();
+  const language = searchParams.get("language") ?? "en";
+  const requestedClauseId = searchParams.get("clause");
   const languageName = { en: "English", hi: "Hindi", gu: "Gujarati", es: "Spanish", fr: "French" }[language] ?? "English";
   const [analysis, setAnalysis] = useState<Analysis | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -35,6 +37,7 @@ export default function AnalysisWorkspace() {
   const [activeTab, setActiveTab] = useState<ClauseTab>("plain");
   const [error, setError] = useState("");
   const [previewWidth, setPreviewWidth] = useState(0);
+  const [zoomPercent, setZoomPercent] = useState(100);
   const pagePreviewRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -42,7 +45,7 @@ export default function AnalysisWorkspace() {
     const controller = new AbortController();
     const cacheKey = `analysis:${documentId}:${language}`;
     const cachedAnalysis = readPageCache<Analysis>(cacheKey, 5 * 60_000);
-    if (cachedAnalysis) setAnalysis(cachedAnalysis);
+    if (cachedAnalysis) queueMicrotask(() => setAnalysis(cachedAnalysis));
     async function loadAnalysis() {
       try {
         const [analysisResponse, previewResponse] = await Promise.all([
@@ -79,7 +82,8 @@ export default function AnalysisWorkspace() {
 
   const totalPages = Math.max(analysis?.summary.total_pages ?? 1, renderedPages);
   // Keep the selected page zoomed enough to read, with scroll inside the preview.
-  const pageWidth = Math.min(560, Math.max(320, (previewWidth || 560) - 24));
+  const fittedPageWidth = Math.min(560, Math.max(320, (previewWidth || 560) - 24));
+  const pageWidth = Math.round(fittedPageWidth * (zoomPercent / 100));
   const allClauses = useMemo(() => (analysis?.clauses ?? []).map((clause) => ({
     ...clause,
     // AI page estimates can occasionally exceed the real page count. Never show
@@ -87,6 +91,17 @@ export default function AnalysisWorkspace() {
     page: Math.min(totalPages, Math.max(1, Number(clause.page) || 1)),
   })), [analysis, totalPages]);
   const selectedClause = allClauses.find((clause) => clause.id === selectedClauseId) ?? null;
+
+  // A global clause-search result can open the exact clause directly instead of
+  // making the user find it again in the extracted-clause list.
+  useEffect(() => {
+    if (!requestedClauseId || !allClauses.some((clause) => clause.id === requestedClauseId)) return;
+    const timer = window.setTimeout(() => {
+      setSelectedClauseId(requestedClauseId);
+      setActiveTab("plain");
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [requestedClauseId, allClauses]);
 
   function highlightAcrossPages() {
     window.setTimeout(() => {
@@ -208,7 +223,7 @@ export default function AnalysisWorkspace() {
 
           <section className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(330px,.9fr)]">
             <div className="flex h-[430px] min-w-0 flex-col overflow-hidden rounded-2xl border border-black/10 bg-[#EAE6DB] sm:h-[520px]">
-              <div className="flex items-center justify-between border-b border-black/10 px-4 py-3 text-sm text-[#526174]"><span>Full document preview · {totalPages} pages</span><span className="max-w-[45%] truncate">{analysis.summary.filename}</span></div>
+              <div className="flex items-center justify-between gap-2 border-b border-black/10 px-4 py-3 text-sm text-[#526174]"><span className="min-w-0 truncate">Full document preview · {totalPages} pages</span><div className="flex shrink-0 items-center gap-1"><button type="button" onClick={() => setZoomPercent((current) => Math.max(60, current - 10))} disabled={zoomPercent <= 60} aria-label="Zoom out document" title="Zoom out" className="grid h-8 w-8 place-items-center rounded-lg border border-black/15 bg-[#F7F3EA] text-[#181211] transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-40"><Minus className="h-4 w-4" /></button><span className="w-11 text-center text-xs font-semibold text-[#181211]" aria-live="polite">{zoomPercent}%</span><button type="button" onClick={() => setZoomPercent((current) => Math.min(180, current + 10))} disabled={zoomPercent >= 180} aria-label="Zoom in document" title="Zoom in" className="grid h-8 w-8 place-items-center rounded-lg border border-black/15 bg-[#F7F3EA] text-[#181211] transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-40"><Plus className="h-4 w-4" /></button></div></div>
               <div ref={pagePreviewRef} className="min-h-0 flex-1 overflow-auto overscroll-contain bg-[#D5D5D5] p-3 sm:p-5">
                 {previewUrl ? <PdfDocument file={previewUrl} loading={<LoaderCircle className="mx-auto mt-20 animate-spin text-[#0875D1]" />} onLoadSuccess={({ numPages }) => setRenderedPages(numPages)} error={<p className="mt-20 text-center text-sm text-red-700">Could not render the PDF preview.</p>}><div className="flex min-w-max flex-col items-center gap-6">{Array.from({ length: totalPages }, (_, index) => { const pageNumber = index + 1; return <div key={`${pageNumber}-${selectedClause?.id ?? "none"}`} data-preview-page={pageNumber} className="shadow-md"><Page pageNumber={pageNumber} width={pageWidth} renderAnnotationLayer={false} renderTextLayer onRenderTextLayerSuccess={highlightAcrossPages} /></div>; })}</div></PdfDocument> : <div className="mt-20 text-center text-sm text-[#67758A]">Loading PDF...</div>}
               </div>

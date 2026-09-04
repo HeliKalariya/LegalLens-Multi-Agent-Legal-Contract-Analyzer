@@ -32,18 +32,26 @@
       password: "",
     });
     const passwordStrength = getPasswordStrength(password);
-    const isFormValid =
-        fullName.trim() !== "" &&
-        email.trim() !== "" &&
-        password.trim() !== "" &&
-        !errors.fullName &&
-        !errors.email &&
-        !errors.password;
+    // Derive button state from the latest field values, not from old error text.
+    // This guarantees the button becomes usable as soon as the user fixes an error.
+    const currentValidation = validateSignup(fullName, email, password);
+    const isFormValid = !currentValidation.fullName && !currentValidation.email && !currentValidation.password;
     const [touched, setTouched] = useState({
       fullName: false,
       email: false,
       password: false,
     });
+
+    function updateSignupField(field: "fullName" | "email" | "password", value: string) {
+      const nextFullName = field === "fullName" ? value : fullName;
+      const nextEmail = field === "email" ? value : email;
+      const nextPassword = field === "password" ? value : password;
+      if (field === "fullName") setFullName(value);
+      if (field === "email") setEmail(value);
+      if (field === "password") setPassword(value);
+      setTouched((current) => ({ ...current, [field]: true }));
+      setErrors(validateSignup(nextFullName, nextEmail, nextPassword));
+    }
     
     const handleSignup = async () => {
 
@@ -55,6 +63,7 @@
   
     // Run Validation
     setErrors(validationErrors);
+    setTouched({ fullName: true, email: true, password: true });
 
     
 
@@ -77,7 +86,7 @@
         password
       );
 
-      toast.success("Verification code sent!", { description: "Enter the six-digit code sent to your email." });
+      toast.success("Account created", { description: "A six-digit verification code was sent to your email." });
 
       setErrors({
         fullName: "",
@@ -88,9 +97,6 @@
       setTimeout(() => router.push(`/verify-email?email=${encodeURIComponent(email)}`), 700);
 
     }catch (error) {
-
-    console.error(error);
-
     const message = error instanceof Error ? error.message : "Could not create account.";
     if (message.includes("already registered")) {
       setErrors({ fullName: "", email: message, password: "" });
@@ -129,14 +135,7 @@
               placeholder="Jane Doe"
               name="name"
               value={fullName}
-              onChange={(e) => {
-                  setFullName(e.target.value);
-
-                  setTouched({
-                    ...touched,
-                    fullName: true,
-                  });
-                }}
+              onChange={(event) => updateSignupField("fullName", event.target.value)}
             />
             <ErrorMessage
               message={
@@ -152,14 +151,7 @@
               placeholder="you@example.com"
               name="email"
               value={email}
-              onChange={(e) => {
-                setEmail(e.target.value);
-
-                setTouched({
-                  ...touched,
-                  email: true,
-                });
-              }}
+              onChange={(event) => updateSignupField("email", event.target.value)}
             />
             <ErrorMessage
               message={
@@ -174,14 +166,7 @@
               placeholder="Create a strong password"
               name="password"
               value={password}
-              onChange={(e) => {
-                setPassword(e.target.value);
-
-                setTouched({
-                  ...touched,
-                  password: true,
-                });
-              }}
+              onChange={(event) => updateSignupField("password", event.target.value)}
             />
             <ErrorMessage
                 message={
