@@ -243,7 +243,9 @@ export default function AnalysisWorkspace() {
                     <article key={clause.id} className="overflow-hidden rounded-2xl border border-black/15 bg-[#F7F3EA]">
                       <button type="button" onClick={() => selectClause(clause)} className="flex w-full items-center gap-3 px-4 py-3.5 text-left">
                         <span className="rounded-xl border border-black/15 bg-[#EAE6DB] px-2 py-1.5 font-mono text-xs font-bold text-[#0875D1]">{clause.clause_number}</span>
-                        <span className="min-w-0 flex-1"><span className="block break-words font-bold">{clause.title}</span><span className="mt-0.5 block text-sm text-[#526174]">Page {clause.page}</span></span>
+                        <span className="min-w-0 flex-1"><span className="block break-words font-bold">{clause.title}</span>
+                        {/* <span className="mt-0.5 block text-sm text-[#526174]">Page {clause.page}</span> */}
+                        </span>
                         <span className={`shrink-0 rounded-full border px-2.5 py-1 text-xs font-semibold ${riskStyles[clause.risk_level]}`}>• {clause.risk_level === "medium" ? "Moderate" : clause.risk_level === "high" ? "High Risk" : "Safe"}</span>
                         <ChevronDown className={`h-4 w-4 shrink-0 text-[#526174] transition-transform ${isExpanded ? "rotate-180" : ""}`} />
                       </button>
